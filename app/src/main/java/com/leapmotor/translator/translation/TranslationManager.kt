@@ -40,6 +40,8 @@ class TranslationManager {
     // Listeners
     private var onModelReadyListener: (() -> Unit)? = null
     private var onErrorListener: ((Exception) -> Unit)? = null
+
+
     
     companion object {
         private const val TAG = "TranslationManager"
@@ -60,10 +62,17 @@ class TranslationManager {
      * Initialize the translator and download the model if needed.
      */
     suspend fun initialize(): Boolean = withContext(Dispatchers.IO) {
-        if (isModelReady) return@withContext true
-        if (isDownloading) return@withContext false
+        if (isModelReady) {
+            downloadState = DownloadState.DOWNLOADED
+            return@withContext true
+        }
+        if (isDownloading) {
+            downloadState = DownloadState.DOWNLOADING
+            return@withContext false
+        }
         
         isDownloading = true
+        downloadState = DownloadState.DOWNLOADING
         
         try {
             // Configure translator: Chinese -> Russian
@@ -80,31 +89,29 @@ class TranslationManager {
                 .build()
             
             // Download model
-            val success = downloadModel(conditions)
+            var success = downloadModel(conditions)
+            
+            if (!success) {
+                // Try without WiFi requirement
+                val anyConditions = DownloadConditions.Builder().build()
+                success = downloadModel(anyConditions)
+            }
             
             if (success) {
                 isModelReady = true
                 isDownloading = false
+                downloadState = DownloadState.DOWNLOADED
                 onModelReadyListener?.invoke()
                 return@withContext true
             } else {
-                // Try without WiFi requirement
-                val anyConditions = DownloadConditions.Builder().build()
-                val retrySuccess = downloadModel(anyConditions)
-                
-                if (retrySuccess) {
-                    isModelReady = true
-                    isDownloading = false
-                    onModelReadyListener?.invoke()
-                    return@withContext true
-                }
+                isDownloading = false
+                downloadState = DownloadState.ERROR
+                return@withContext false
             }
-            
-            isDownloading = false
-            return@withContext false
             
         } catch (e: Exception) {
             isDownloading = false
+            downloadState = DownloadState.ERROR
             onErrorListener?.invoke(e)
             return@withContext false
         }
@@ -281,6 +288,18 @@ class TranslationManager {
         }
     }
     
+    fun setOnDownloadStateChangeListener(listener: (DownloadState) -> Unit) {
+        onDownloadStateChangeListener = listener
+        // Immediately invoke with current state
+        listener.invoke(downloadState)
+    }
+
+    fun setOnDownloadStateChangeListener(listener: (DownloadState) -> Unit) {
+        onDownloadStateChangeListener = listener
+        // Immediately invoke with current state
+        listener.invoke(downloadState)
+    }
+
     /**
      * Set callback for errors.
      */

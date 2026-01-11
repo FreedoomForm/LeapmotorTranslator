@@ -62,6 +62,21 @@ class TextOverlay(context: Context) : View(context) {
     // Debug mode flag
     var debugMode: Boolean = false
     
+    // Status visual indicator
+    enum class Status {
+        INITIALIZING, // Yellow
+        ACTIVE,       // Green
+        PAUSED,       // Gray
+        ERROR         // Red
+    }
+    
+    private var currentStatus: Status = Status.INITIALIZING
+    
+    // Status dot paint
+    private val statusPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    
     init {
         // Enable hardware acceleration
         setLayerType(LAYER_TYPE_HARDWARE, null)
@@ -80,6 +95,8 @@ class TextOverlay(context: Context) : View(context) {
                 drawTranslatedText(canvas, item)
             }
         }
+        
+        drawStatus(canvas)
     }
     
     /**
@@ -117,6 +134,34 @@ class TextOverlay(context: Context) : View(context) {
         if (debugMode) {
             canvas.drawRect(item.bounds, debugPaint)
         }
+    }
+
+    private fun drawStatus(canvas: Canvas) {
+        val color = when (currentStatus) {
+            Status.INITIALIZING -> Color.YELLOW
+            Status.ACTIVE -> Color.GREEN
+            Status.PAUSED -> Color.GRAY
+            Status.ERROR -> Color.RED
+        }
+        
+        statusPaint.color = color
+        
+        // Draw small dot in top-left corner
+        // 10px radius, 20px margin
+        canvas.drawCircle(30f, 30f, 10f, statusPaint)
+        
+        // Draw blinking stroke if error or initializing
+        if (currentStatus == Status.ERROR || currentStatus == Status.INITIALIZING) {
+             val time = System.currentTimeMillis()
+             if (time % 1000 < 500) { // Blink every 0.5s
+                 canvas.drawCircle(30f, 30f, 12f, shadowPaint)
+             }
+        }
+    }
+    
+    fun setStatus(status: Status) {
+        currentStatus = status
+        invalidate()
     }
     
     /**

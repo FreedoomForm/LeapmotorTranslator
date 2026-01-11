@@ -35,6 +35,19 @@ class MainActivity : AppCompatActivity() {
     private lateinit var accessibilityBtn: Button
     private lateinit var toggleOverlayBtn: Button
     private lateinit var debugModeBtn: Button
+    private lateinit var logTextView: TextView
+    
+    private fun appendLog(msg: String) {
+        runOnUiThread {
+            if (::logTextView.isInitialized) {
+                val currentText = logTextView.text.toString()
+                val newText = "$msg\n$currentText"
+                // Keep only last 10 lines
+                val lines = newText.split("\n").take(10).joinToString("\n")
+                logTextView.text = lines
+            }
+        }
+    }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -126,6 +139,26 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(cacheStatsText)
         
+        // Logs
+        val logLabel = TextView(this).apply {
+            text = "Лог событий:"
+            textSize = 14f
+            setTextColor(Color.LTGRAY)
+            setPadding(0, 32, 0, 8)
+        }
+        layout.addView(logLabel)
+
+        val logText = TextView(this).apply {
+            text = "..."
+            textSize = 12f
+            setTextColor(Color.YELLOW)
+            setBackgroundColor(Color.parseColor("#33000000"))
+            setPadding(16, 16, 16, 16)
+            maxLines = 10
+        }
+        layout.addView(logText)
+        this.logTextView = logText
+
         // Instructions
         val instructions = TextView(this).apply {
             text = """
@@ -161,54 +194,63 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatus() {
         val hasOverlayPermission = Settings.canDrawOverlays(this)
         val isServiceRunning = TranslationService.instance != null
+        val translationManager = com.leapmotor.translator.translation.TranslationManager.getInstance()
         
-        val statusBuilder = StringBuilder()
-        
-        // Overlay permission status
-        statusBuilder.append("Наложение: ")
-        if (hasOverlayPermission) {
-            statusBuilder.append("✓ Разрешено\n")
-            overlayPermissionBtn.isEnabled = false
-            overlayPermissionBtn.alpha = 0.5f
-        } else {
-            statusBuilder.append("✗ Требуется разрешение\n")
-            overlayPermissionBtn.isEnabled = true
-            overlayPermissionBtn.alpha = 1f
-        }
-        
-        // Accessibility service status
-        statusBuilder.append("Сервис: ")
-        if (isServiceRunning) {
-            statusBuilder.append("✓ Запущен\n")
-            accessibilityBtn.alpha = 0.5f
-            toggleOverlayBtn.isEnabled = true
-            debugModeBtn.isEnabled = true
-        } else {
-            statusBuilder.append("✗ Не активирован\n")
-            accessibilityBtn.alpha = 1f
-            toggleOverlayBtn.isEnabled = false
-            debugModeBtn.isEnabled = false
-        }
-        
-        // Translation model status
-        statusBuilder.append("Перевод: ")
-        if (isServiceRunning) {
-            val stats = TranslationService.instance?.getCacheStats()
-            if (stats != null) {
-                statusBuilder.append("✓ Готов\n")
-                cacheStatsText.text = "Кэш: ${stats.size} записей | " +
-                        "Попадания: ${stats.hits} | " +
-                        "Промахи: ${stats.misses} | " +
-                        "Эффективность: ${(stats.hitRate * 100).toInt()}%"
-            } else {
-                statusBuilder.append("Загрузка...\n")
+        // Subscribe to download state changes
+        translationManager.setOnDownloadStateChangeListener { state ->
+            runOnUiThread {
+                val statusBuilder = StringBuilder()
+                
+                // Overlay permission status
+                statusBuilder.append("Наложение: ")
+                if (hasOverlayPermission) {
+                    statusBuilder.append("✓ Разрешено\n")
+                    overlayPermissionBtn.isEnabled = false
+                    overlayPermissionBtn.alpha = 0.5f
+                } else {
+                    statusBuilder.append("✗ Требуется разрешение\n")
+                    overlayPermissionBtn.isEnabled = true
+                    overlayPermissionBtn.alpha = 1f
+                }
+                
+                // Accessibility service status
+                statusBuilder.append("Сервис: ")
+                if (isServiceRunning) {
+                    statusBuilder.append("✓ Запущен\n")
+                    accessibilityBtn.alpha = 0.5f
+                    toggleOverlayBtn.isEnabled = true
+                    debugModeBtn.isEnabled = true
+                } else {
+                    statusBuilder.append("✗ Не активирован\n")
+                    accessibilityBtn.alpha = 1f
+                    toggleOverlayBtn.isEnabled = false
+                    debugModeBtn.isEnabled = false
+                }
+                
+                // Translation model status
+                statusBuilder.append("Перевод: ")
+                when (state) {
+                    com.leapmotor.translator.translation.TranslationManager.DownloadState.NOT_STARTED -> statusBuilder.append("Ожидание...\n")
+                    com.leapmotor.translator.translation.TranslationManager.DownloadState.DOWNLOADING -> statusBuilder.append("⏳ Загрузка словаря...\n")
+                    com.leapmotor.translator.translation.TranslationManager.DownloadState.DOWNLOADED -> {
+                        statusBuilder.append("✓ Словарь готов\n")
+                        val stats = translationManager.getCacheStats()
+                        cacheStatsText.text = "Кэш: ${stats.size} | Эффективность: ${(stats.hitRate * 100).toInt()}%"
+                    }
+                    com.leapmotor.translator.translation.TranslationManager.DownloadState.ERROR -> statusBuilder.append("✗ Ошибка загрузки (проверьте интернет)\n")
+                }
+                
+                statusText.text = statusBuilder.toString()
             }
-        } else {
-            statusBuilder.append("Ожидание сервиса\n")
-            cacheStatsText.text = ""
         }
         
-        statusText.text = statusBuilder.toString()
+        translationManager.setOnErrorListener { e ->
+            appendLog("Ошибка ML Kit: ${e.message}")
+            runOnUiThread {
+                statusText.text = "Ошибка: ${e.message}"
+                statusText.setTextColor(Color.RED)
+            }
+        }
     }
     
     private fun requestOverlayPermission() {

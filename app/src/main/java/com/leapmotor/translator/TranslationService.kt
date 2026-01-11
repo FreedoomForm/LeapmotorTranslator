@@ -147,15 +147,22 @@ class TranslationService : AccessibilityService() {
         
         // Initialize translation engine with preloaded translations
         serviceScope.launch {
+            withContext(Dispatchers.Main) {
+                textOverlay?.setStatus(TextOverlay.Status.INITIALIZING)
+            }
+            
             translationManager.preloadTranslations(CommonTranslations.LEAPMOTOR_UI)
             val ready = translationManager.initialize()
-            if (ready) {
-                Log.d(TAG, "Translation model ready")
-                withContext(Dispatchers.Main) {
+            
+            withContext(Dispatchers.Main) {
+                if (ready) {
+                    Log.d(TAG, "Translation model ready")
                     createOverlay()
+                    textOverlay?.setStatus(TextOverlay.Status.ACTIVE)
+                } else {
+                    Log.e(TAG, "Failed to initialize translation model")
+                    textOverlay?.setStatus(TextOverlay.Status.ERROR)
                 }
-            } else {
-                Log.e(TAG, "Failed to initialize translation model")
             }
         }
         
