@@ -111,6 +111,29 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(accessibilityBtn, createButtonParams())
         
+        layout.addView(accessibilityBtn, createButtonParams())
+
+        // Manual Download Button
+        val downloadModelBtn = Button(this).apply {
+            text = "Загрузить словарь вручную"
+            setOnClickListener { 
+                isEnabled = false
+                text = "Запуск загрузки..."
+                // Use GlobalScope or lifecycleScope (if available, else Thread) since we are in simplified context
+                // But better to use simple Thread for compatibility if scope is not setup
+                 android.os.Handler(android.os.Looper.getMainLooper()).post {
+                     val manager = com.leapmotor.translator.translation.TranslationManager.getInstance()
+                     Thread {
+                         kotlinx.coroutines.runBlocking {
+                             manager.initialize()
+                         }
+                     }.start()
+                 }
+            }
+            setPadding(32, 24, 32, 24)
+        }
+        layout.addView(downloadModelBtn, createButtonParams())
+        
         // Toggle overlay button
         toggleOverlayBtn = Button(this).apply {
             text = "Вкл/Выкл наложение"
