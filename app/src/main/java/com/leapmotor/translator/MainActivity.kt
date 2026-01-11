@@ -5,6 +5,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
+import android.text.TextUtils
+import android.content.ComponentName
 import androidx.appcompat.app.AppCompatActivity
 import android.view.View
 import android.widget.Button
@@ -109,6 +111,8 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { openAccessibilitySettings() }
             setPadding(32, 24, 32, 24)
         }
+        layout.addView(accessibilityBtn, createButtonParams())
+
         layout.addView(accessibilityBtn, createButtonParams())
 
         // Update Button (Web)
@@ -249,14 +253,22 @@ class MainActivity : AppCompatActivity() {
                 
                 // Accessibility service status
                 statusBuilder.append("Сервис: ")
-                if (isServiceRunning) {
-                    statusBuilder.append("✓ Запущен\n")
+                if (isAccessibilityServiceEnabled()) {
+                    if (isServiceRunning) {
+                        statusBuilder.append("✓ Активен и работает\n")
+                    } else {
+                        statusBuilder.append("⚠ Включен, но не запущен (перезагрузите телефон)\n")
+                    }
                     accessibilityBtn.alpha = 0.5f
+                } else {
+                    statusBuilder.append("✗ Не включен в настройках\n")
+                    accessibilityBtn.alpha = 1f
+                }
+
+                if (isServiceRunning) {
                     toggleOverlayBtn.isEnabled = true
                     debugModeBtn.isEnabled = true
                 } else {
-                    statusBuilder.append("✗ Не активирован\n")
-                    accessibilityBtn.alpha = 1f
                     toggleOverlayBtn.isEnabled = false
                     debugModeBtn.isEnabled = false
                 }
@@ -325,6 +337,26 @@ class MainActivity : AppCompatActivity() {
         ).show()
     }
     
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val expectedComponentName = ComponentName(this, TranslationService::class.java)
+        val enabledServicesSetting = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        
+        val colonSplitter = TextUtils.SimpleStringSplitter(':')
+        colonSplitter.setString(enabledServicesSetting)
+        
+        while (colonSplitter.hasNext()) {
+            val componentNameString = colonSplitter.next()
+            val enabledComponent = ComponentName.unflattenFromString(componentNameString)
+            if (enabledComponent != null && enabledComponent == expectedComponentName) {
+                return true
+            }
+        }
+        return false
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == OVERLAY_PERMISSION_REQUEST) {

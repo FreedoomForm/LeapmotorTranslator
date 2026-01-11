@@ -137,41 +137,51 @@ class TranslationService : AccessibilityService() {
     private fun initializeService() {
         if (isInitialized) return
         
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        
-        // Check if this is the target display (1920x1080)
-        // Disabled for testing on phone
-        /*if (!isTargetDisplay()) {
-            Log.w(TAG, "Not running on target display (1920x1080), service disabled")
-            return
-        }*/
-        
-        // Initialize translation engine with preloaded translations
-        serviceScope.launch {
-            withContext(Dispatchers.Main) {
-                textOverlay?.setStatus(TextOverlay.Status.INITIALIZING)
-            }
+        try {
+            windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
             
-            translationManager.preloadTranslations(CommonTranslations.LEAPMOTOR_UI)
-            val ready = translationManager.initialize()
-            
-            withContext(Dispatchers.Main) {
-                if (ready) {
-                    Log.d(TAG, "Translation model ready")
-                    createOverlay()
-                    textOverlay?.setStatus(TextOverlay.Status.ACTIVE)
-                } else {
-                    Log.e(TAG, "Failed to initialize translation model")
-                    textOverlay?.setStatus(TextOverlay.Status.ERROR)
+            // initialize translation engine with safe try-catch wrapper
+            serviceScope.launch {
+                try {
+                    withContext(Dispatchers.Main) {
+                        textOverlay?.setStatus(TextOverlay.Status.INITIALIZING)
+                    }
+                    
+                    translationManager.preloadTranslations(CommonTranslations.LEAPMOTOR_UI)
+                    val ready = translationManager.initialize()
+                    
+                    withContext(Dispatchers.Main) {
+                        if (ready) {
+                            Log.d(TAG, "Translation model ready")
+                            createOverlay()
+                            textOverlay?.setStatus(TextOverlay.Status.ACTIVE)
+                        } else {
+                            Log.e(TAG, "Failed to initialize translation model")
+                            textOverlay?.setStatus(TextOverlay.Status.ERROR)
+                            android.widget.Toast.makeText(this@TranslationService, "Ошибка инициализации модели перевода", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                     Log.e(TAG, "Error in translation initialization: ${e.message}")
+                     e.printStackTrace()
+                     withContext(Dispatchers.Main) {
+                         android.widget.Toast.makeText(this@TranslationService, "Ошибка перевода: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                     }
                 }
             }
-        }
-        
-        isInitialized = true
-        Log.d(TAG, "TranslationService initialized")
-        
-        mainHandler.post {
-            android.widget.Toast.makeText(this, "Сервис перевода запущен!", android.widget.Toast.LENGTH_LONG).show()
+            
+            isInitialized = true
+            Log.d(TAG, "TranslationService initialized")
+            
+            mainHandler.post {
+                android.widget.Toast.makeText(this, "Сервис перевода запущен!", android.widget.Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Critical error initializing service: ${e.message}")
+            e.printStackTrace()
+            mainHandler.post {
+                android.widget.Toast.makeText(this, "Критическая ошибка сервиса: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
     
@@ -238,12 +248,12 @@ class TranslationService : AccessibilityService() {
             height = WindowManager.LayoutParams.MATCH_PARENT
         }
         
-        try {
-            windowManager.addView(overlayContainer, params)
-            isOverlayActive = true
-            Log.d(TAG, "Overlay created successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create overlay: ${e.message}")
+            e.printStackTrace()
+            mainHandler.post {
+                android.widget.Toast.makeText(this, "Ошибка создания наложения: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
     
