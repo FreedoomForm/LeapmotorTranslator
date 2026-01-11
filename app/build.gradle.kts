@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.leapmotor.translator"
-    compileSdk = 28  // Android 9 Pie
+    compileSdk = 34  // Updated to satisfy AndroidX requirements
 
     defaultConfig {
         applicationId = "com.leapmotor.translator"
         minSdk = 28
-        targetSdk = 28
+        targetSdk = 34 // Best practice to match compileSdk
         versionCode = 1
         versionName = "1.0.0"
 
