@@ -109,7 +109,16 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { openAccessibilitySettings() }
             setPadding(32, 24, 32, 24)
         }
-        layout.addView(accessibilityBtn, createButtonParams())
+        // Update Button (Web)
+        val updateBtn = Button(this).apply {
+            text = "Проверить обновления / Скачать"
+            setOnClickListener { 
+                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/d7dax/LeapmotorTranslator/actions"))
+                startActivity(browserIntent)
+            }
+            setPadding(32, 24, 32, 24)
+        }
+        layout.addView(updateBtn, createButtonParams())
         
 
 

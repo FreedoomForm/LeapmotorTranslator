@@ -140,10 +140,11 @@ class TranslationService : AccessibilityService() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         
         // Check if this is the target display (1920x1080)
-        if (!isTargetDisplay()) {
+        // Disabled for testing on phone
+        /*if (!isTargetDisplay()) {
             Log.w(TAG, "Not running on target display (1920x1080), service disabled")
             return
-        }
+        }*/
         
         // Initialize translation engine with preloaded translations
         serviceScope.launch {
@@ -168,6 +169,10 @@ class TranslationService : AccessibilityService() {
         
         isInitialized = true
         Log.d(TAG, "TranslationService initialized")
+        
+        mainHandler.post {
+            android.widget.Toast.makeText(this, "Сервис перевода запущен!", android.widget.Toast.LENGTH_LONG).show()
+        }
     }
     
     /**
