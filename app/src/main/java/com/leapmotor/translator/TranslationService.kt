@@ -248,6 +248,10 @@ class TranslationService : AccessibilityService() {
             height = WindowManager.LayoutParams.MATCH_PARENT
         }
         
+        try {
+            windowManager.addView(overlayContainer, params)
+            isOverlayActive = true
+            Log.d(TAG, "Overlay created successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create overlay: ${e.message}")
             e.printStackTrace()
