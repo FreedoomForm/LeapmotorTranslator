@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    
+    <!-- Background -->
+    <path
+        android:fillColor="#1a237e"
+        android:pathData="M0,0h48v48h-48z"/>
+    
+    <!-- Translation icon -->
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M14,12 L28,12 Q32,12 32,16 L32,24 Q32,28 28,28 L18,28 L14,34 L14,28 Q10,28 10,24 L10,16 Q10,12 14,12 Z"/>
+    
+    <path
+        android:fillColor="#90caf9"
+        android:pathData="M20,20 L34,20 Q38,20 38,24 L38,32 Q38,36 34,36 L30,36 L30,42 L24,36 L20,36 Q16,36 16,32 L16,24 Q16,20 20,20 Z"/>
+    
+</vector>

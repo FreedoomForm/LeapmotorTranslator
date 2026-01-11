@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Background circle -->
+    <path
+        android:fillColor="#1a237e"
+        android:pathData="M54,54m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0"/>
+    
+    <!-- Translation symbol: Two overlapping speech bubbles -->
+    <!-- Left bubble (Chinese) -->
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M30,35 L50,35 Q55,35 55,40 L55,52 Q55,57 50,57 L35,57 L30,65 L30,57 Q25,57 25,52 L25,40 Q25,35 30,35 Z"/>
+    
+    <!-- Right bubble (Russian) -->
+    <path
+        android:fillColor="#90caf9"
+        android:pathData="M58,43 L78,43 Q83,43 83,48 L83,60 Q83,65 78,65 L73,65 L73,73 L63,65 L58,65 Q53,65 53,60 L53,48 Q53,43 58,43 Z"/>
+    
+    <!-- Arrow connecting bubbles -->
+    <path
+        android:fillColor="#ffeb3b"
+        android:pathData="M48,50 L60,50 L60,47 L66,52 L60,57 L60,54 L48,54 Z"/>
+    
+    <!-- Chinese character "中" simplified -->
+    <path
+        android:fillColor="#1a237e"
+        android:pathData="M32,42 L48,42 L48,44 L41,44 L41,52 L39,52 L39,44 L32,44 Z"/>
+    
+    <!-- Russian letter "Р" -->
+    <path
+        android:fillColor="#1a237e"
+        android:pathData="M62,49 L62,61 L64,61 L64,56 L68,56 Q71,56 71,52.5 Q71,49 68,49 L62,49 Z M64,51 L67,51 Q69,51 69,52.5 Q69,54 67,54 L64,54 Z"/>
+    
+</vector>

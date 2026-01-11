@@ -1,0 +1,25 @@
+# LeapmotorTranslator
+
+# Build files
+*.iml
+.gradle/
+build/
+local.properties
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# APK files (they are build artifacts)
+*.apk
+*.aab
+
+# Signing keys (never commit these)
+*.jks
+*.keystore

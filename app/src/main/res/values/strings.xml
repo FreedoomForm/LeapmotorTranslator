@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Leapmotor Translator</string>
+    <string name="service_name">Переводчик интерфейса</string>
+    <string name="accessibility_service_description">Этот сервис переводит китайский интерфейс автомобиля на русский язык в реальном времени.</string>
+    <string name="overlay_enabled">Наложение включено</string>
+    <string name="overlay_disabled">Наложение отключено</string>
+    <string name="btn_enable">Включить</string>
+    <string name="btn_disable">Выключить</string>
+    <string name="status_translating">Перевод...</string>
+    <string name="status_ready">Готово</string>
+    <string name="permission_required">Требуется разрешение на наложение</string>
+    <string name="accessibility_required">Требуется включить службу специальных возможностей</string>
+</resources>
