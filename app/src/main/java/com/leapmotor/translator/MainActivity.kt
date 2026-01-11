@@ -109,6 +109,8 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { openAccessibilitySettings() }
             setPadding(32, 24, 32, 24)
         }
+        layout.addView(accessibilityBtn, createButtonParams())
+
         // Update Button (Web)
         val updateBtn = Button(this).apply {
             text = "Проверить обновления / Скачать"
