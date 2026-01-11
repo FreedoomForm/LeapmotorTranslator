@@ -111,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(accessibilityBtn, createButtonParams())
         
-        layout.addView(accessibilityBtn, createButtonParams())
+
 
         // Manual Download Button
         val downloadModelBtn = Button(this).apply {
