@@ -76,66 +76,84 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
     }
     
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-        // Set clear color to fully transparent
-        GLES30.glClearColor(0f, 0f, 0f, 0f)
-        
-        // Enable blending for transparency
-        GLES30.glEnable(GLES30.GL_BLEND)
-        GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
-        
-        // Initialize shaders
-        initShaders()
-        
-        // Initialize geometry buffers
-        initBuffers()
-        
-        // Record start time for animation
-        startTime = SystemClock.elapsedRealtime()
+        try {
+            // Set clear color to fully transparent
+            GLES30.glClearColor(0f, 0f, 0f, 0f)
+            
+            // Enable blending for transparency
+            GLES30.glEnable(GLES30.GL_BLEND)
+            GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
+            
+            // Initialize shaders
+            initShaders()
+            
+            // Initialize geometry buffers
+            initBuffers()
+            
+            // Record start time for animation
+            startTime = SystemClock.elapsedRealtime()
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "OpenGL Initialization Failed: ${e.message}")
+            e.printStackTrace()
+            // Disable rendering to prevent further crashes
+            programId = 0
+        }
     }
     
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-        GLES30.glViewport(0, 0, width, height)
-        screenWidth = width.toFloat()
-        screenHeight = height.toFloat()
+        try {
+            GLES30.glViewport(0, 0, width, height)
+            screenWidth = width.toFloat()
+            screenHeight = height.toFloat()
+        } catch (e: Exception) {
+             android.util.Log.e(TAG, "Surface Changed Error: ${e.message}")
+        }
     }
     
     override fun onDrawFrame(gl: GL10?) {
-        // Clear with transparent
-        GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+        if (programId == 0) return // Skip if init failed
         
-        // Use our shader program
-        GLES30.glUseProgram(programId)
-        
-        // Update uniforms
-        GLES30.glUniform2f(uResolutionLoc, screenWidth, screenHeight)
-        
-        // Calculate elapsed time for animation
-        val elapsed = (SystemClock.elapsedRealtime() - startTime) / 1000f
-        GLES30.glUniform1f(uTimeLoc, elapsed)
-        
-        // Upload bounding boxes
-        synchronized(boxLock) {
-            GLES30.glUniform1i(uBoxCountLoc, boxCount)
-            if (boxCount > 0) {
-                GLES30.glUniform4fv(uBoundingBoxesLoc, boxCount, boundingBoxes, 0)
+        try {
+            // Clear with transparent
+            GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+            
+            // Use our shader program
+            GLES30.glUseProgram(programId)
+            
+            // Update uniforms
+            GLES30.glUniform2f(uResolutionLoc, screenWidth, screenHeight)
+            
+            // Calculate elapsed time for animation
+            val elapsed = (SystemClock.elapsedRealtime() - startTime) / 1000f
+            GLES30.glUniform1f(uTimeLoc, elapsed)
+            
+            // Upload bounding boxes
+            synchronized(boxLock) {
+                GLES30.glUniform1i(uBoxCountLoc, boxCount)
+                if (boxCount > 0) {
+                    GLES30.glUniform4fv(uBoundingBoxesLoc, boxCount, boundingBoxes, 0)
+                }
             }
+            
+            // Bind vertex data
+            vertexBuffer.position(0)
+            GLES30.glVertexAttribPointer(aPositionLoc, 2, GLES30.GL_FLOAT, false, 0, vertexBuffer)
+            GLES30.glEnableVertexAttribArray(aPositionLoc)
+            
+            texCoordBuffer.position(0)
+            GLES30.glVertexAttribPointer(aTexCoordLoc, 2, GLES30.GL_FLOAT, false, 0, texCoordBuffer)
+            GLES30.glEnableVertexAttribArray(aTexCoordLoc)
+            
+            // Draw full-screen quad
+            GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)
+            
+            // Cleanup
+            GLES30.glDisableVertexAttribArray(aPositionLoc)
+            GLES30.glDisableVertexAttribArray(aTexCoordLoc)
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Draw Frame Error: ${e.message}")
+            // Consider disabling after repeat errors?
         }
-        
-        // Bind vertex data
-        vertexBuffer.position(0)
-        GLES30.glVertexAttribPointer(aPositionLoc, 2, GLES30.GL_FLOAT, false, 0, vertexBuffer)
-        GLES30.glEnableVertexAttribArray(aPositionLoc)
-        
-        texCoordBuffer.position(0)
-        GLES30.glVertexAttribPointer(aTexCoordLoc, 2, GLES30.GL_FLOAT, false, 0, texCoordBuffer)
-        GLES30.glEnableVertexAttribArray(aTexCoordLoc)
-        
-        // Draw full-screen quad
-        GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)
-        
-        // Cleanup
-        GLES30.glDisableVertexAttribArray(aPositionLoc)
-        GLES30.glDisableVertexAttribArray(aTexCoordLoc)
     }
     
     /**
