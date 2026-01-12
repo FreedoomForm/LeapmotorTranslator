@@ -558,13 +558,7 @@ class TranslationService : AccessibilityService() {
         }
     }
     
-    /**
-     * Enable/disable debug mode.
-     */
-    fun setDebugMode(enabled: Boolean) {
-        textOverlay?.debugMode = enabled
-        textOverlay?.invalidate()
-    }
+
     
     /**
      * Get translation cache statistics.
