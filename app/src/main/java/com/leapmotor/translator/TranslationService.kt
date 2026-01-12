@@ -54,6 +54,23 @@ class TranslationService : AccessibilityService() {
         @Volatile
         var instance: TranslationService? = null
             private set
+            
+        // Debug History Log
+        data class LogItem(
+            val time: Long,
+            val original: String,
+            val translated: String?,
+            val bounds: RectF
+        )
+        
+        val historyLog = java.util.concurrent.CopyOnWriteArrayList<LogItem>()
+        
+        fun addToLog(original: String, translated: String?, bounds: RectF) {
+            if (historyLog.size > 50) {
+                historyLog.removeAt(0)
+            }
+            historyLog.add(LogItem(System.currentTimeMillis(), original, translated, bounds))
+        }
     }
     
     // Window manager for overlays
@@ -400,6 +417,10 @@ class TranslationService : AccessibilityService() {
             if (element == null) {
                 // New element - translate and create tracker
                 val translation = translationManager.translate(node.text)
+                
+                // Log it
+                addToLog(node.text, translation, RectF(node.bounds))
+                
                 val filter = filterPool.acquire()
                 
                 element = TrackedElement(

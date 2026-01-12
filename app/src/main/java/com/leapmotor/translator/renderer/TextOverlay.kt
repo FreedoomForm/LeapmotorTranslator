@@ -99,10 +99,31 @@ class TextOverlay(context: Context) : View(context) {
         drawStatus(canvas)
     }
     
+        // Debug: draw screen border and text backgrounds
+        if (debugMode) {
+            // Draw RED border around screen to verify overlay presence
+            val borderPaint = Paint().apply {
+                color = Color.RED
+                style = Paint.Style.STROKE
+                strokeWidth = 10f
+            }
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), borderPaint)
+        }
+    }
+    
     /**
      * Draw a single translated text item with shadow for contrast.
      */
     private fun drawTranslatedText(canvas: Canvas, item: TranslatedText) {
+        // Debug: draw red background behind text
+        if (debugMode) {
+            val bgPaint = Paint().apply {
+                color = Color.argb(100, 255, 0, 0) // Semi-transparent red
+                style = Paint.Style.FILL
+            }
+            canvas.drawRect(item.bounds, bgPaint)
+        }
+
         // Update paint size
         textPaint.textSize = item.fontSize
         shadowPaint.textSize = item.fontSize
@@ -130,7 +151,7 @@ class TextOverlay(context: Context) : View(context) {
         // Draw main text
         canvas.drawText(displayText, x, y, textPaint)
         
-        // Debug: draw bounding box
+        // Debug: draw bounding box outline
         if (debugMode) {
             canvas.drawRect(item.bounds, debugPaint)
         }

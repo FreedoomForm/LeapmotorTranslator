@@ -59,6 +59,7 @@ class TranslationManager {
     companion object {
         private const val TAG = "TranslationManager"
         private const val MAX_CACHE_SIZE = 5000
+        private const val PREFS_NAME = "user_dictionary"
         
         // Singleton instance
         @Volatile
@@ -71,6 +72,44 @@ class TranslationManager {
         }
     }
     
+    private var prefs: android.content.SharedPreferences? = null
+
+    /**
+     * Initialize with Context to enable User Dictionary persistence.
+     */
+    fun init(context: android.content.Context) {
+        if (prefs == null) {
+            prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+            loadUserDictionary()
+        }
+    }
+
+    private fun loadUserDictionary() {
+        prefs?.all?.forEach { (key, value) ->
+            if (value is String) {
+                translationCache[key] = value
+            }
+        }
+    }
+
+    /**
+     * Update or add a translation and save it.
+     */
+    fun updateTranslation(original: String, translated: String) {
+        // Update memory cache
+        translationCache[original.trim()] = translated.trim()
+        
+        // Save to storage
+        prefs?.edit()?.putString(original.trim(), translated.trim())?.apply()
+    }
+
+    /**
+     * Get all currently known translations.
+     */
+    fun getAllTranslations(): Map<String, String> {
+        return HashMap(translationCache)
+    }
+
     /**
      * Initialize the translator and download the model if needed.
      */

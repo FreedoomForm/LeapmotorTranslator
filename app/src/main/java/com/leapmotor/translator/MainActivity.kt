@@ -57,6 +57,9 @@ class MainActivity : AppCompatActivity() {
         // Build UI programmatically (no XML layout needed)
         setContentView(createContentView())
         
+        // Initialize Dictionary
+        com.leapmotor.translator.translation.TranslationManager.getInstance().init(this)
+        
         // Initial status update
         updateStatus()
         
@@ -141,6 +144,27 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(overlayPermissionBtn, createButtonParams())
         
+        // User Dictionary Button
+        val dictionaryBtn = Button(this).apply {
+            text = "Словарь / Редактор"
+            setOnClickListener { 
+                startActivity(Intent(this@MainActivity, DictionaryActivity::class.java))
+            }
+            setPadding(32, 24, 32, 24)
+        }
+        layout.addView(dictionaryBtn, createButtonParams())
+
+        // Debug History Button
+        val historyBtn = Button(this).apply {
+            text = "История распознавания (Debug)"
+            setTextColor(Color.CYAN)
+            setOnClickListener { 
+                startActivity(Intent(this@MainActivity, RecognizedWordsActivity::class.java))
+            }
+            setPadding(32, 24, 32, 24)
+        }
+        layout.addView(historyBtn, createButtonParams())
+
         // Accessibility settings button
         accessibilityBtn = Button(this).apply {
             text = "Настройки доступности"

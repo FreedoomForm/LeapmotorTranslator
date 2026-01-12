@@ -33,6 +33,23 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".DictionaryActivity"
+            android:exported="false"
+            android:label="Dictionary"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.LeapmotorTranslator">
+        </activity>
+
+        <!-- Debug History Activity -->
+        <activity
+            android:name=".RecognizedWordsActivity"
+            android:exported="false"
+            android:label="Debug History"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.LeapmotorTranslator">
+        </activity>
+
         <!-- Translation Overlay Accessibility Service -->
         <service
             android:name=".TranslationService"
