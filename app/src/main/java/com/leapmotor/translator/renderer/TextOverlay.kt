@@ -97,8 +97,7 @@ class TextOverlay(context: Context) : View(context) {
         }
         
         drawStatus(canvas)
-    }
-    
+        
         // Debug: draw screen border and text backgrounds
         if (debugMode) {
             // Draw RED border around screen to verify overlay presence
