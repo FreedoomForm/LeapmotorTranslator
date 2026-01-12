@@ -13,6 +13,7 @@
         android:required="true" />
 
     <application
+        android:name=".TranslatorApp"
         android:allowBackup="false"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"

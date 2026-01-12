@@ -59,6 +59,42 @@ class MainActivity : AppCompatActivity() {
         
         // Initial status update
         updateStatus()
+        
+        // Check for previous crashes
+        checkCrashLog()
+    }
+    
+    private fun checkCrashLog() {
+        val crashFile = java.io.File(filesDir, "crash_log.txt")
+        if (crashFile.exists()) {
+            try {
+                val crashText = crashFile.readText()
+                if (crashText.isNotEmpty()) {
+                    // Show crash dialog or append to log
+                    runOnUiThread {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("Обнаружен вылет!")
+                            .setMessage("Приложение завершилось с ошибкой:\n\n${crashText.take(500)}...")
+                            .setPositiveButton("ОК") { _, _ -> 
+                                // Rename/delete file so we don't show it again
+                                crashFile.delete() 
+                            }
+                            .setNeutralButton("Копировать") { _, _ ->
+                                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clip = android.content.ClipData.newPlainText("Crash Log", crashText)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(this, "Лог скопирован", Toast.LENGTH_SHORT).show()
+                                crashFile.delete()
+                            }
+                            .show()
+                            
+                        appendLog("ОБНАРУЖЕН КРАШ:\n$crashText")
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
     
     override fun onResume() {
@@ -113,7 +149,28 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(accessibilityBtn, createButtonParams())
 
-        layout.addView(accessibilityBtn, createButtonParams())
+        // MIUI Specific Permissions
+        if (com.leapmotor.translator.util.PermissionUtils.isXiaomi()) {
+             val miuiBtn = Button(this).apply {
+                text = "Настройка Xiaomi / MIUI"
+                setTextColor(Color.YELLOW)
+                setOnClickListener { 
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Настройка Xiaomi (MIUI)")
+                        .setMessage("Для работы на Xiaomi/Redmi требуется выдать специальные разрешения:\n\n1. Автозапуск\n2. Отображать всплывающие окна")
+                        .setPositiveButton("Автозапуск") { _, _ ->
+                            com.leapmotor.translator.util.PermissionUtils.openMiuiAutostart(this@MainActivity)
+                        }
+                        .setNegativeButton("Всплывающие окна") { _, _ ->
+                             com.leapmotor.translator.util.PermissionUtils.openMiuiPopupPermission(this@MainActivity)
+                        }
+                        .setNeutralButton("Закрыть", null)
+                        .show()
+                }
+                setPadding(32, 24, 32, 24)
+            }
+            layout.addView(miuiBtn, createButtonParams())
+        }
 
         // Update Button (Web)
         val updateBtn = Button(this).apply {

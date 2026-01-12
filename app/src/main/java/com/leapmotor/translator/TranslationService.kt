@@ -46,10 +46,6 @@ class TranslationService : AccessibilityService() {
     companion object {
         private const val TAG = "TranslationService"
         
-        // Leapmotor C11 central screen resolution
-        private const val TARGET_SCREEN_WIDTH = 1920
-        private const val TARGET_SCREEN_HEIGHT = 1080
-        
         // Processing settings
         private const val UPDATE_DEBOUNCE_MS = 50L
         private const val MAX_NODES_PER_FRAME = 64
@@ -62,7 +58,11 @@ class TranslationService : AccessibilityService() {
     
     // Window manager for overlays
     private lateinit var windowManager: WindowManager
-    
+
+    // Dynamic screen metrics
+    private var screenWidth = 1080
+    private var screenHeight = 2340 // Default to a reasonable mobile size, updated in onCreate
+
     // Overlay views
     private var overlayContainer: FrameLayout? = null
     private var eraserView: EraserSurfaceView? = null
@@ -140,6 +140,13 @@ class TranslationService : AccessibilityService() {
         try {
             windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
             
+            // Get dynamic screen metrics
+            val metrics = DisplayMetrics()
+            windowManager.defaultDisplay.getRealMetrics(metrics)
+            screenWidth = metrics.widthPixels
+            screenHeight = metrics.heightPixels
+            Log.d(TAG, "Screen metrics initialized: ${screenWidth}x${screenHeight}")
+
             // initialize translation engine with safe try-catch wrapper
             serviceScope.launch {
                 try {
@@ -183,20 +190,6 @@ class TranslationService : AccessibilityService() {
                 android.widget.Toast.makeText(this, "Критическая ошибка сервиса: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
             }
         }
-    }
-    
-    /**
-     * Check if running on Leapmotor C11 central screen (1920x1080).
-     */
-    private fun isTargetDisplay(): Boolean {
-        val metrics = DisplayMetrics()
-        windowManager.defaultDisplay.getMetrics(metrics)
-        
-        Log.d(TAG, "Display size: ${metrics.widthPixels}x${metrics.heightPixels}")
-        
-        // Allow some tolerance for different density configs
-        return metrics.widthPixels >= TARGET_SCREEN_WIDTH - 100 &&
-                metrics.widthPixels <= TARGET_SCREEN_WIDTH + 100
     }
     
     /**
@@ -359,8 +352,8 @@ class TranslationService : AccessibilityService() {
             // Skip off-screen or too small elements
             if (bounds.width() > 10 && bounds.height() > 10 &&
                 bounds.left >= 0 && bounds.top >= 0 &&
-                bounds.right <= TARGET_SCREEN_WIDTH &&
-                bounds.bottom <= TARGET_SCREEN_HEIGHT
+                bounds.right <= screenWidth &&
+                bounds.bottom <= screenHeight
             ) {
                 val id = "${node.viewIdResourceName ?: ""}:${bounds.hashCode()}"
                 results.add(TextNode(id, text, bounds, depth))
