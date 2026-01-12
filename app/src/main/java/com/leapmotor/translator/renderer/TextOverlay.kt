@@ -112,47 +112,64 @@ class TextOverlay(context: Context) : View(context) {
     
     /**
      * Draw a single translated text item with shadow for contrast.
+     * Dynamically positions and sizes text to match Chinese original.
      */
     private fun drawTranslatedText(canvas: Canvas, item: TranslatedText) {
-        // Debug: draw red background behind text
+        // Debug mode: draw semi-transparent background to show text bounds
         if (debugMode) {
             val bgPaint = Paint().apply {
-                color = Color.argb(100, 255, 0, 0) // Semi-transparent red
+                color = Color.argb(100, 255, 0, 0)
                 style = Paint.Style.FILL
             }
             canvas.drawRect(item.bounds, bgPaint)
         }
 
-        // Update paint size
+        // Set font size from pre-calculated value
         textPaint.textSize = item.fontSize
         shadowPaint.textSize = item.fontSize
         
-        // Calculate text position
-        // Center vertically within bounds, align left
-        val textHeight = textPaint.descent() - textPaint.ascent()
-        val x = item.bounds.left + 2f  // Small padding
-        val y = item.bounds.centerY() - (textPaint.descent() + textPaint.ascent()) / 2
+        // Calculate text metrics for vertical centering
+        val fontMetrics = textPaint.fontMetrics
+        val textHeight = fontMetrics.descent - fontMetrics.ascent
         
-        // Measure text and handle overflow
+        // X position: small padding from left edge
+        val x = item.bounds.left + 2f
+        
+        // Y position: vertically center text within bounds
+        // Canvas drawText uses baseline, so we calculate baseline from center
+        val centerY = item.bounds.centerY()
+        val y = centerY - (fontMetrics.descent + fontMetrics.ascent) / 2f
+        
+        // Available width for text (with small padding)
         val availableWidth = item.bounds.width() - 4f
+        
+        // Measure actual text width at current font size
         val textWidth = textPaint.measureText(item.text)
         
-        val displayText = if (textWidth > availableWidth && availableWidth > 30f) {
-            // Truncate with ellipsis if too long
+        // Prepare display text - truncate if needed
+        val displayText = if (textWidth > availableWidth && availableWidth > 20f) {
             truncateText(item.text, availableWidth)
         } else {
             item.text
         }
         
-        // Draw shadow/stroke first (for contrast against any background)
+        // Draw shadow/stroke first for contrast on any background
         canvas.drawText(displayText, x, y, shadowPaint)
         
-        // Draw main text
+        // Draw main white text on top
         canvas.drawText(displayText, x, y, textPaint)
         
-        // Debug: draw bounding box outline
+        // Debug mode: draw bounding box outline and text info
         if (debugMode) {
             canvas.drawRect(item.bounds, debugPaint)
+            
+            // Draw size info
+            val infoText = "${item.fontSize.toInt()}px"
+            val infoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.YELLOW
+                textSize = 10f
+            }
+            canvas.drawText(infoText, item.bounds.left, item.bounds.top - 2f, infoPaint)
         }
     }
 
@@ -281,12 +298,46 @@ class TextOverlay(context: Context) : View(context) {
      * Estimate optimal font size for a given bounds.
      */
     /**
-     * Estimate optimal font size based primarily on container height.
-     * Matches the visual size of the original Chinese text.
+     * Estimate optimal font size that fits text within given bounds.
+     * Uses actual Paint measurement for accuracy.
+     * 
+     * @param text The text to fit
+     * @param bounds The bounding rectangle to fit within
+     * @param maxSize Maximum font size allowed
+     * @param minSize Minimum font size allowed
+     * @return Optimal font size in pixels
      */
-    fun estimateFontSize(text: String, bounds: RectF, maxSize: Float = 100f, minSize: Float = 12f): Float {
-        // Target 80% of the box height to match C-line height
-        val targetHeight = bounds.height() * 0.8f
-        return targetHeight.coerceIn(minSize, maxSize)
+    fun estimateFontSize(text: String, bounds: RectF, maxSize: Float = 100f, minSize: Float = 10f): Float {
+        if (text.isEmpty() || bounds.width() <= 0 || bounds.height() <= 0) {
+            return minSize
+        }
+        
+        val availableWidth = bounds.width() - 4f  // Small padding
+        val availableHeight = bounds.height()
+        
+        // Start with height-based estimate (80% of box height)
+        var fontSize = availableHeight * 0.8f
+        
+        // Create a temporary paint to measure
+        val measurePaint = Paint(textPaint)
+        
+        // Binary search for optimal size that fits width (limit iterations)
+        var low = minSize
+        var high = minOf(fontSize, maxSize)
+        
+        for (i in 0 until 8) {  // Max 8 iterations for quick convergence
+            val mid = (low + high) / 2f
+            measurePaint.textSize = mid
+            val measuredWidth = measurePaint.measureText(text)
+            
+            if (measuredWidth <= availableWidth) {
+                low = mid
+            } else {
+                high = mid
+            }
+        }
+        
+        // Use the lower bound (which fits)
+        return low.coerceIn(minSize, maxSize)
     }
 }

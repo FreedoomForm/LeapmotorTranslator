@@ -118,10 +118,13 @@ class TranslationService : AccessibilityService() {
         val id: String,
         val originalText: String,
         var translatedText: String?,
-        val bounds: RectF,
+        val bounds: RectF,               // Original bounding box from accessibility
+        val originalBounds: RectF,       // Copy of original bounds (unchanged by prediction)
         var predictedY: Float,
         var lastSeenTime: Long,
-        var kalmanFilter: KalmanFilter?
+        var kalmanFilter: KalmanFilter?,
+        val originalWidth: Float,        // Width of the Chinese text box
+        val originalHeight: Float        // Height of the Chinese text box (for font sizing)
     )
     
     override fun onCreate() {
@@ -164,23 +167,22 @@ class TranslationService : AccessibilityService() {
             screenHeight = metrics.heightPixels
             Log.d(TAG, "Screen metrics initialized: ${screenWidth}x${screenHeight}")
 
+            // Initialize overlay immediately so user sees feedback
+            createOverlay()
+            textOverlay?.setStatus(TextOverlay.Status.INITIALIZING)
+
             // Initialize dictionary persistence
             translationManager.init(this)
 
             // initialize translation engine with safe try-catch wrapper
             serviceScope.launch {
                 try {
-                    withContext(Dispatchers.Main) {
-                        textOverlay?.setStatus(TextOverlay.Status.INITIALIZING)
-                    }
-                    
                     translationManager.preloadTranslations(CommonTranslations.LEAPMOTOR_UI)
                     val ready = translationManager.initialize()
                     
                     withContext(Dispatchers.Main) {
                         if (ready) {
                             Log.d(TAG, "Translation model ready")
-                            createOverlay()
                             textOverlay?.setStatus(TextOverlay.Status.ACTIVE)
                         } else {
                             Log.e(TAG, "Failed to initialize translation model")
@@ -192,6 +194,7 @@ class TranslationService : AccessibilityService() {
                      Log.e(TAG, "Error in translation initialization: ${e.message}")
                      e.printStackTrace()
                      withContext(Dispatchers.Main) {
+                         textOverlay?.setStatus(TextOverlay.Status.ERROR)
                          android.widget.Toast.makeText(this@TranslationService, "Ошибка перевода: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                      }
                 }
@@ -388,8 +391,10 @@ class TranslationService : AccessibilityService() {
                 bounds.right <= screenWidth &&
                 bounds.bottom <= screenHeight
             ) {
-                val id = "${node.viewIdResourceName ?: ""}:${bounds.hashCode()}"
-                results.add(TextNode(id, text, bounds, depth))
+                // Generate stable ID for tracking (independent of X/Y position to support Kalman filtering)
+                // We use text + dimensions + viewId. This allows tracking the same element as it scrolls.
+                val idStr = "${node.viewIdResourceName ?: "no_id"}|${text}|${bounds.width()}x${bounds.height()}"
+                results.add(TextNode(idStr, text, bounds, depth))
             }
         }
         
@@ -435,7 +440,8 @@ class TranslationService : AccessibilityService() {
                 val translation = translationManager.translate(node.text)
                 
                 // Log it
-                addToLog(node.text, translation, RectF(node.bounds))
+                val nodeBounds = RectF(node.bounds)
+                addToLog(node.text, translation, nodeBounds)
                 
                 val filter = filterPool.acquire()
                 
@@ -443,10 +449,13 @@ class TranslationService : AccessibilityService() {
                     id = node.id,
                     originalText = node.text,
                     translatedText = translation,
-                    bounds = RectF(node.bounds),
+                    bounds = RectF(nodeBounds),
+                    originalBounds = RectF(nodeBounds),  // Keep original for reference
                     predictedY = node.bounds.top.toFloat(),
                     lastSeenTime = currentTime,
-                    kalmanFilter = filter
+                    kalmanFilter = filter,
+                    originalWidth = nodeBounds.width(),
+                    originalHeight = nodeBounds.height()
                 )
                 
                 trackedElements[node.id] = element
@@ -497,14 +506,20 @@ class TranslationService : AccessibilityService() {
     
     /**
      * Update overlay with translated elements.
+     * 
+     * Key improvements:
+     * 1. Eraser boxes match EXACT Chinese text bounds (with small padding)
+     * 2. Translation text uses same position/size as original Chinese
+     * 3. Kalman prediction keeps boxes stable during scroll
      */
     private fun updateOverlay(elements: List<TrackedElement>) {
         if (!isOverlayActive) return
         
         // Update eraser shader bounding boxes
+        // These cover the ORIGINAL Chinese text areas
         val eraserBoxes = elements.map { element ->
             // Use Kalman-predicted Y for smoother scroll tracking
-            val predictedBounds = RectF(element.bounds)
+            val predictedBounds = RectF(element.originalBounds)
             predictedBounds.offsetTo(predictedBounds.left, element.predictedY)
             predictedBounds
         }
@@ -514,17 +529,21 @@ class TranslationService : AccessibilityService() {
         val textItems = elements.mapNotNull { element ->
             val translation = element.translatedText ?: return@mapNotNull null
             
-            // Use predicted bounds
-            val predictedBounds = RectF(element.bounds)
-            predictedBounds.offsetTo(predictedBounds.left, element.predictedY)
+            // Use predicted Y position, but keep original X and dimensions
+            val predictedBounds = RectF(
+                element.originalBounds.left,
+                element.predictedY,
+                element.originalBounds.right,
+                element.predictedY + element.originalHeight
+            )
             
-            // Estimate font size based on bounds
-            val fontSize = textOverlay?.estimateFontSize(
+            // Estimate font size based on ORIGINAL Chinese text box height
+            // This ensures Russian translation matches the visual size of Chinese
+            val fontSize = calculateDynamicFontSize(
                 translation,
-                predictedBounds,
-                maxSize = 32f,
-                minSize = 14f
-            ) ?: 20f
+                element.originalWidth,
+                element.originalHeight
+            )
             
             TextOverlay.TranslatedText(
                 text = translation,
@@ -534,6 +553,35 @@ class TranslationService : AccessibilityService() {
             )
         }
         textOverlay?.updateTextItems(textItems)
+    }
+    
+    /**
+     * Calculate dynamic font size that will fit the translated text
+     * within the Chinese text box dimensions.
+     * 
+     * @param text The Russian translated text
+     * @param boxWidth Width of the original Chinese text box
+     * @param boxHeight Height of the original Chinese text box
+     * @return Optimal font size in pixels
+     */
+    private fun calculateDynamicFontSize(text: String, boxWidth: Float, boxHeight: Float): Float {
+        // Start with height-based estimate (70% of box height is good baseline)
+        val heightBasedSize = boxHeight * 0.7f
+        
+        // Russian text is typically wider than Chinese for same character count
+        // Estimate required width: Russian uses ~0.6 * fontSize per character average
+        val avgCharWidth = 0.55f  // Approximate ratio for Cyrillic bold font
+        val requiredWidth = text.length * heightBasedSize * avgCharWidth
+        
+        // If text would overflow width, scale down proportionally
+        val widthBasedSize = if (requiredWidth > boxWidth) {
+            heightBasedSize * (boxWidth / requiredWidth)
+        } else {
+            heightBasedSize
+        }
+        
+        // Clamp to reasonable range
+        return widthBasedSize.coerceIn(10f, 48f)
     }
     
     override fun onInterrupt() {

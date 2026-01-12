@@ -184,6 +184,11 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
                 boundingBoxes[offset + 2] = box.width()
                 boundingBoxes[offset + 3] = box.height()
             }
+            
+            // Debug log first box (if exists) to verify coordinates
+            if (boxCount > 0 && android.util.Log.isLoggable(TAG, android.util.Log.DEBUG)) {
+                android.util.Log.d(TAG, "Eraser boxes updated: $boxCount boxes. First: (${boundingBoxes[0]}, ${boundingBoxes[1]}, ${boundingBoxes[2]}x${boundingBoxes[3]})")
+            }
         }
     }
     
