@@ -12,8 +12,8 @@ package com.leapmotor.translator.filter
  * Measurement: position only
  */
 class KalmanFilter(
-    private val processNoise: Float = 0.1f,      // Q: Process noise covariance
-    private val measurementNoise: Float = 1.0f,  // R: Measurement noise covariance
+    private val processNoise: Float = 0.01f,      // Q: Reduced process noise
+    private val measurementNoise: Float = 2.0f,  // R: Increased measurement noise (smoother)
     private val estimationError: Float = 1.0f    // Initial P: Estimation error covariance
 ) {
     // State variables
@@ -30,7 +30,7 @@ class KalmanFilter(
     companion object {
         private const val MIN_DT = 0.001f      // 1ms minimum delta time
         private const val MAX_DT = 0.1f        // 100ms maximum delta time
-        private const val PREDICTION_TIME_MS = 20L  // Target prediction ahead time
+        private const val PREDICTION_TIME_MS = 5L  // Reduced prediction time to prevent overshoot
     }
     
     /**
