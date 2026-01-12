@@ -210,6 +210,19 @@ class TranslationService : AccessibilityService() {
     }
     
     /**
+     * Set debug mode to show/hide visualization helpers.
+     */
+    fun setDebugMode(enabled: Boolean) {
+        textOverlay?.debugMode = enabled
+        textOverlay?.invalidate()
+        if (enabled) {
+             mainHandler.post {
+                android.widget.Toast.makeText(this, "Debug Mode Enabled (Red Border)", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /**
      * Create the overlay window with OpenGL eraser and text layers.
      */
     private fun createOverlay() {
