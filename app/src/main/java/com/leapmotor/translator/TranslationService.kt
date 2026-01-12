@@ -164,6 +164,9 @@ class TranslationService : AccessibilityService() {
             screenHeight = metrics.heightPixels
             Log.d(TAG, "Screen metrics initialized: ${screenWidth}x${screenHeight}")
 
+            // Initialize dictionary persistence
+            translationManager.init(this)
+
             // initialize translation engine with safe try-catch wrapper
             serviceScope.launch {
                 try {

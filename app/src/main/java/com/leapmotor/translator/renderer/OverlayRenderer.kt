@@ -295,7 +295,8 @@ class EraserSurfaceView(context: Context) : GLSurfaceView(context) {
         renderMode = RENDERMODE_WHEN_DIRTY
         
         // Set transparent background
-        setZOrderOnTop(true)
+        // MediaOverlay places it above the window but behind other Views (like TextOverlay)
+        setZOrderMediaOverlay(true)
     }
     
     /**

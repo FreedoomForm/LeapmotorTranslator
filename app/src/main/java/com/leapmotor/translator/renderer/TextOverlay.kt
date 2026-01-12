@@ -280,21 +280,13 @@ class TextOverlay(context: Context) : View(context) {
     /**
      * Estimate optimal font size for a given bounds.
      */
-    fun estimateFontSize(text: String, bounds: RectF, maxSize: Float = 36f, minSize: Float = 12f): Float {
-        val testPaint = Paint(textPaint)
-        var size = maxSize
-        
-        while (size >= minSize) {
-            testPaint.textSize = size
-            val textWidth = testPaint.measureText(text)
-            val textHeight = testPaint.descent() - testPaint.ascent()
-            
-            if (textWidth <= bounds.width() - 4f && textHeight <= bounds.height()) {
-                return size
-            }
-            size -= 2f
-        }
-        
-        return minSize
+    /**
+     * Estimate optimal font size based primarily on container height.
+     * Matches the visual size of the original Chinese text.
+     */
+    fun estimateFontSize(text: String, bounds: RectF, maxSize: Float = 100f, minSize: Float = 12f): Float {
+        // Target 80% of the box height to match C-line height
+        val targetHeight = bounds.height() * 0.8f
+        return targetHeight.coerceIn(minSize, maxSize)
     }
 }

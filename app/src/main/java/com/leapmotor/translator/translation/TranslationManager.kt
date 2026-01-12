@@ -218,11 +218,13 @@ class TranslationManager {
         // Check cache first
         translationCache[normalizedText]?.let {
             cacheHits++
+            // Log.d(TAG, "Cache HIT: '$normalizedText' -> '$it'")
             return@withContext it
         }
         
         // Not in cache - translate
         cacheMisses++
+        // Log.d(TAG, "Cache MISS: '$normalizedText'")
         
         if (!isModelReady || translator == null) {
             // Model not ready, return original
