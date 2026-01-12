@@ -48,7 +48,9 @@ class TranslationService : AccessibilityService() {
         
         // Processing settings
         private const val UPDATE_DEBOUNCE_MS = 50L
-        private const val MAX_NODES_PER_FRAME = 64
+        // Processing settings
+        private const val UPDATE_DEBOUNCE_MS = 50L
+        private const val MAX_NODES_PER_FRAME = 128
         
         // Singleton reference for external access
         @Volatile
@@ -468,6 +470,13 @@ class TranslationService : AccessibilityService() {
                 // Re-translate if text changed
                 if (element.originalText != node.text) {
                     element.translatedText = translationManager.translate(node.text)
+                }
+                
+                // Recovery: If filter was lost (e.g. pool exhausted previously), try to acquire one again
+                if (element.kalmanFilter == null) {
+                    element.kalmanFilter = filterPool.acquire()
+                    // If we got one, sync it
+                    element.kalmanFilter?.update(node.bounds.top.toFloat(), currentTime)
                 }
             }
             

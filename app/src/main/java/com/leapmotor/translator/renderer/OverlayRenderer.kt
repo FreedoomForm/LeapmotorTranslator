@@ -101,6 +101,8 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
     }
     
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+        if (programId == 0) return
+
         try {
             GLES30.glViewport(0, 0, width, height)
             screenWidth = width.toFloat()
@@ -111,7 +113,12 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
     }
     
     override fun onDrawFrame(gl: GL10?) {
-        if (programId == 0) return // Skip if init failed
+        // Safe guard: If init failed, just clear screen and return
+        if (programId == 0) {
+            GLES30.glClearColor(0f, 0f, 0f, 0f)
+            GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+            return 
+        }
         
         try {
             // Clear with transparent
@@ -152,7 +159,10 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
             GLES30.glDisableVertexAttribArray(aTexCoordLoc)
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Draw Frame Error: ${e.message}")
-            // Consider disabling after repeat errors?
+            // If we hit a hard GL error, disable future rendering
+            if (e.message?.contains("GL_INVALID") == true) {
+                programId = 0
+            }
         }
     }
     
