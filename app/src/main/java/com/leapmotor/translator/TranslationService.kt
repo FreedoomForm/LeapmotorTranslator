@@ -48,8 +48,6 @@ class TranslationService : AccessibilityService() {
         
         // Processing settings
         private const val UPDATE_DEBOUNCE_MS = 50L
-        // Processing settings
-        private const val UPDATE_DEBOUNCE_MS = 50L
         private const val MAX_NODES_PER_FRAME = 128
         
         // Singleton reference for external access
