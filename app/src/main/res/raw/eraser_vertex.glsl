@@ -24,5 +24,11 @@ void main() {
     vTexCoord = aTexCoord;
     
     // Calculate screen position for bounding box checks
-    vScreenPos = (aPosition * 0.5 + 0.5) * uResolution;
+    // Calculate screen position for bounding box checks (Invert Y for Android top-left origin)
+    // GL (0,0) is Bottom-Left. Android (0,0) is Top-Left.
+    // map y: 1.0 (Top) -> 0.0, -1.0 (Bottom) -> 1.0
+    vScreenPos = vec2(
+        (aPosition.x + 1.0) * 0.5 * uResolution.x,
+        (1.0 - aPosition.y) * 0.5 * uResolution.y
+    );
 }
