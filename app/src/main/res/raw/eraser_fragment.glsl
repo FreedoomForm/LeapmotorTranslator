@@ -1,7 +1,7 @@
-// Fragment Shader: Smart Eraser with Procedural Inpainting
+// Fragment Shader: Premium Smart Eraser with Advanced Visual Effects
 // LeapmotorTranslator - Optimized for Adreno 640 GPU / Snapdragon 8155
 // OpenGL ES 3.0
-// FIXED: Dynamic bounding box coverage, improved coordinate handling
+// ENHANCED: Premium gradients, soft glow borders, chromatic noise, shimmer effects
 
 #version 300 es
 
@@ -23,10 +23,32 @@ uniform int uBoxCount;              // Number of active boxes
 uniform vec4 uBoundingBoxes[32];    // Array of boxes (x, y, w, h)
 
 // Padding added to each bounding box to ensure complete coverage
-const float BOX_PADDING = 4.0;
+const float BOX_PADDING = 6.0;
+
+// Premium visual settings
+const float GLOW_INTENSITY = 0.15;
+const float GLOW_RADIUS = 8.0;
+const float SHIMMER_SPEED = 0.8;
+const float GRADIENT_STRENGTH = 0.08;
 
 // ============================================================================
-// SIMPLEX NOISE IMPLEMENTATION
+// ADVANCED HASH FUNCTIONS FOR HIGH-QUALITY NOISE
+// ============================================================================
+
+vec3 hash33(vec3 p3) {
+    p3 = fract(p3 * vec3(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, p3.yxz + 33.33);
+    return fract((p3.xxy + p3.yxx) * p3.zyx);
+}
+
+float hash12(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+// ============================================================================
+// SIMPLEX NOISE IMPLEMENTATION - ENHANCED
 // High-frequency procedural noise for background generation
 // ============================================================================
 
@@ -69,7 +91,26 @@ float snoise(vec2 v) {
 }
 
 // ============================================================================
-// FRACTAL BROWNIAN MOTION (FBM)
+// VALUE NOISE - Smoother alternative for gradients
+// ============================================================================
+
+float valueNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    
+    // Improved smoothstep for smoother interpolation
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    
+    float a = hash12(i);
+    float b = hash12(i + vec2(1.0, 0.0));
+    float c = hash12(i + vec2(0.0, 1.0));
+    float d = hash12(i + vec2(1.0, 1.0));
+    
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+// ============================================================================
+// FRACTAL BROWNIAN MOTION (FBM) - ENHANCED
 // ============================================================================
 
 float fbm(vec2 p, int octaves) {
@@ -78,73 +119,174 @@ float fbm(vec2 p, int octaves) {
     float frequency = 1.0;
     float maxValue = 0.0;
     
+    // Rotation matrix for domain warping (reduces grid artifacts)
+    mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+    
     for (int i = 0; i < octaves; i++) {
         value += amplitude * snoise(p * frequency);
         maxValue += amplitude;
         amplitude *= 0.5;
         frequency *= 2.0;
+        p = rot * p; // Domain warping
     }
     
     return value / maxValue;
 }
 
+// Enhanced FBM with chromatic variation
+vec3 fbmChromatic(vec2 p, int octaves) {
+    float r = fbm(p + vec2(0.0, 0.0), octaves);
+    float g = fbm(p + vec2(5.2, 1.3), octaves);
+    float b = fbm(p + vec2(1.7, 9.2), octaves);
+    return vec3(r, g, b);
+}
+
 // ============================================================================
-// SOLID COLOR FILL (Smart Adaptive)
+// PREMIUM GRADIENT FILL
 // ============================================================================
 
-vec4 getSolidFill(vec2 screenPos) {
+vec4 getPremiumFill(vec2 screenPos, vec2 boxCenter, vec2 boxSize) {
+    // Normalized position within the box (-1 to 1)
+    vec2 localPos = (screenPos - boxCenter) / (boxSize * 0.5);
+    
+    // Subtle radial gradient from center
+    float radialGradient = 1.0 - length(localPos) * GRADIENT_STRENGTH;
+    
+    // Animated shimmer effect
+    float shimmer = sin(screenPos.x * 0.03 + screenPos.y * 0.02 + uTime * SHIMMER_SPEED) * 0.5 + 0.5;
+    shimmer = shimmer * shimmer * 0.02; // Subtle shimmer
+    
     if (uIsLightBackground == 1) {
-        // LIGHT THEME: Micro-Noise Texture
-        // Darkened to 0.85 again so user can SEE the eraser (0.95 was too invisible)
-        // Opaque to ensure hiding.
-        float noise = fbm(screenPos * 0.05 + uTime * 0.02, 2) * 0.015;
-        float base = 0.85 + noise; 
-        return vec4(base, base, base, 1.0);
+        // ====== LIGHT THEME: Premium matte white with subtle warmth ======
+        
+        // Multi-layer noise for natural paper-like texture
+        float coarseNoise = fbm(screenPos * 0.015 + uTime * 0.008, 3) * 0.012;
+        float fineNoise = valueNoise(screenPos * 0.08) * 0.008;
+        float microDetail = snoise(screenPos * 0.3) * 0.003;
+        
+        // Base color with warm undertone (slight cream tint)
+        float base = 0.92 + coarseNoise + fineNoise + microDetail;
+        base *= radialGradient;
+        base += shimmer;
+        
+        // Very subtle warm color variation
+        vec3 color = vec3(base, base * 0.995, base * 0.985);
+        
+        return vec4(color, 1.0);
+        
     } else {
-        // DARK THEME: Textured fill
-        // Matches grainy car dashboard plastics/materials
-        float noise = fbm(screenPos * 0.02 + uTime * 0.05, 3);
-        float base = 0.10;
-        float val = base + noise * 0.05; 
-        return vec4(val, val, val, 1.0);
+        // ====== DARK THEME: Premium carbon fiber / dashboard look ======
+        
+        // Multi-layer noise for rich texture
+        float coarseNoise = fbm(screenPos * 0.012 + uTime * 0.015, 4);
+        float fineNoise = valueNoise(screenPos * 0.05 + uTime * 0.02) * 0.015;
+        
+        // Subtle chromatic variation for premium look
+        vec3 chromaNoise = fbmChromatic(screenPos * 0.008, 2) * 0.015;
+        
+        // Base dark color with subtle blue undertone (car dashboard style)
+        float base = 0.08 + coarseNoise * 0.04 + fineNoise;
+        base *= radialGradient;
+        base += shimmer * 0.5;
+        
+        // Subtle cool color shift for depth
+        vec3 color = vec3(
+            base + chromaNoise.r * 0.3,
+            base + chromaNoise.g * 0.5,
+            base + chromaNoise.b * 0.8
+        );
+        
+        // Slight blue tint for automotive theme
+        color.b += 0.008;
+        
+        return vec4(color, 1.0);
     }
 }
 
 // ============================================================================
-// BOUNDING BOX COLLISION DETECTION
-// Returns coverage factor (0.0 = outside, 1.0 = fully inside)
+// SOFT GLOW EFFECT
 // ============================================================================
 
-float getBoxCoverage(vec2 screenPos) {
+float getSoftGlow(vec2 screenPos, float distToEdge, float coverage) {
+    // Animated glow pulse
+    float pulse = sin(uTime * 2.0) * 0.3 + 0.7;
+    
+    // Glow extends beyond the box edges
+    float glowFalloff = smoothstep(GLOW_RADIUS, 0.0, -distToEdge);
+    
+    // Combine with coverage for smooth transition
+    return glowFalloff * GLOW_INTENSITY * pulse * (1.0 - coverage);
+}
+
+// ============================================================================
+// ADVANCED BOUNDING BOX COLLISION DETECTION
+// Returns: coverage factor, distance to edge, box center, box size
+// ============================================================================
+
+struct BoxInfo {
+    float coverage;
+    float distToEdge;
+    vec2 center;
+    vec2 size;
+    bool inside;
+};
+
+BoxInfo getBoxInfo(vec2 screenPos) {
+    BoxInfo info;
+    info.coverage = 0.0;
+    info.distToEdge = 1000.0;
+    info.center = vec2(0.0);
+    info.size = vec2(1.0);
+    info.inside = false;
+    
     float maxCoverage = 0.0;
+    float minDistToEdge = 1000.0;
     
     for (int i = 0; i < 32; i++) {
         if (i >= uBoxCount) break;
         
         vec4 box = uBoundingBoxes[i];
         
-        // Apply padding to ensure complete coverage
+        // Box boundaries with padding
         float left   = box.x - BOX_PADDING;
         float top    = box.y - BOX_PADDING;
         float right  = box.x + box.z + BOX_PADDING;
         float bottom = box.y + box.w + BOX_PADDING;
         
+        // Calculate signed distance to box edges
+        float dx = max(left - screenPos.x, screenPos.x - right);
+        float dy = max(top - screenPos.y, screenPos.y - bottom);
+        float signedDist = max(dx, dy);
+        
+        // Track minimum distance for glow effect
+        if (abs(signedDist) < abs(minDistToEdge)) {
+            minDistToEdge = signedDist;
+            info.center = vec2(box.x + box.z * 0.5, box.y + box.w * 0.5);
+            info.size = vec2(box.z + BOX_PADDING * 2.0, box.w + BOX_PADDING * 2.0);
+        }
+        
         // Check if inside this expanded box
-        if (screenPos.x >= left && screenPos.x <= right &&
-            screenPos.y >= top && screenPos.y <= bottom) {
+        if (signedDist <= 0.0) {
+            info.inside = true;
             
             // Calculate distance to nearest edge for smooth falloff
-            float dx = min(screenPos.x - left, right - screenPos.x);
-            float dy = min(screenPos.y - top, bottom - screenPos.y);
-            float distToEdge = min(dx, dy);
+            float distToEdgeInner = min(
+                min(screenPos.x - left, right - screenPos.x),
+                min(screenPos.y - top, bottom - screenPos.y)
+            );
             
-            // Soft edge transition (Sharpened to 1.0px to avoid transparent look)
-            float edgeSoftness = smoothstep(0.0, 1.0, distToEdge);
+            // Premium smooth edge transition with cubic easing
+            float t = clamp(distToEdgeInner / 3.0, 0.0, 1.0);
+            float edgeSoftness = t * t * (3.0 - 2.0 * t); // Smoothstep equivalent
+            
             maxCoverage = max(maxCoverage, edgeSoftness);
         }
     }
     
-    return maxCoverage;
+    info.coverage = maxCoverage;
+    info.distToEdge = minDistToEdge;
+    
+    return info;
 }
 
 // ============================================================================
@@ -152,19 +294,40 @@ float getBoxCoverage(vec2 screenPos) {
 // ============================================================================
 
 void main() {
-    // Get coverage factor for current pixel
-    float coverage = getBoxCoverage(vScreenPos);
+    // Get comprehensive box information
+    BoxInfo boxInfo = getBoxInfo(vScreenPos);
     
-    if (coverage > 0.001) {
-        // === INSIDE OR NEAR TEXT BOX: Apply eraser effect ===
+    if (boxInfo.inside && boxInfo.coverage > 0.001) {
+        // === INSIDE TEXT BOX: Apply premium eraser effect ===
         
-        // Get fill color (solid dark with subtle variation)
-        vec4 fillColor = getSolidFill(vScreenPos);
+        // Get premium fill color with gradients and texture
+        vec4 fillColor = getPremiumFill(vScreenPos, boxInfo.center, boxInfo.size);
         
-        // Apply coverage as alpha for smooth edges
-        // RESTORED FULL OPACITY: User reported "Chinese words not working" (still visible).
-        // Removing transparency to ensure complete erasing.
-        fragColor = vec4(fillColor.rgb, coverage);
+        // Apply smooth coverage with premium alpha
+        // Using squared coverage for smoother visual edges
+        float smoothAlpha = boxInfo.coverage * boxInfo.coverage;
+        smoothAlpha = mix(smoothAlpha, 1.0, smoothAlpha); // Bias towards full opacity
+        
+        fragColor = vec4(fillColor.rgb, smoothAlpha);
+        
+    } else if (boxInfo.distToEdge < GLOW_RADIUS && boxInfo.distToEdge > 0.0) {
+        // === NEAR TEXT BOX: Subtle outer glow for premium look ===
+        
+        float glowAlpha = getSoftGlow(vScreenPos, boxInfo.distToEdge, boxInfo.coverage);
+        
+        if (glowAlpha > 0.001) {
+            // Glow color based on theme
+            vec3 glowColor;
+            if (uIsLightBackground == 1) {
+                glowColor = vec3(0.95, 0.93, 0.90); // Warm white glow
+            } else {
+                glowColor = vec3(0.15, 0.18, 0.25); // Cool blue glow
+            }
+            
+            fragColor = vec4(glowColor, glowAlpha);
+        } else {
+            fragColor = vec4(0.0, 0.0, 0.0, 0.0);
+        }
         
     } else {
         // === OUTSIDE TEXT BOXES: Fully transparent ===

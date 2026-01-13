@@ -1,32 +1,43 @@
 package com.leapmotor.translator.renderer
 
 import android.content.Context
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.text.TextPaint
 import android.view.View
 import com.leapmotor.translator.core.Logger
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.math.sin
 
 /**
- * High-performance text overlay for rendering translated text.
+ * Premium Text Overlay for rendering translated Russian text.
  * 
- * Senior-level improvements:
- * - Optimized Paint object reuse
- * - Thread-safe item management
- * - Efficient text measurement caching
- * - Status indicator with animation
- * - Configurable styling
+ * ENHANCED FEATURES:
+ * - Multi-layer glow/shadow system for depth
+ * - Gradient text fills for premium appearance
+ * - Improved typography with custom font support
+ * - Soft ambient shadows for readability
+ * - Animated pulse effects on status indicator
+ * - Glass-morphism style visual effects
  * 
- * Uses hardware-accelerated Canvas drawing optimized for Snapdragon 8155.
+ * Optimized for Snapdragon 8155 with hardware-accelerated Canvas.
  */
 class TextOverlay(context: Context) : View(context) {
     
     companion object {
         private const val TAG = "TextOverlay"
+        
+        // Animation timing
+        private const val GLOW_PULSE_SPEED = 0.003f
+        private const val STATUS_BLINK_INTERVAL = 500L
     }
     
     // ============================================================================
@@ -63,6 +74,10 @@ class TextOverlay(context: Context) : View(context) {
     // Current status
     private var currentStatus: Status = Status.INITIALIZING
     
+    // Animation state
+    private var animationTime = 0L
+    private var lastDrawTime = System.currentTimeMillis()
+    
     // Debug mode flag
     var debugMode: Boolean = false
         set(value) {
@@ -71,29 +86,105 @@ class TextOverlay(context: Context) : View(context) {
         }
     
     // ============================================================================
-    // PAINT OBJECTS (Reused for performance)
+    // PREMIUM CONFIGURATION
     // ============================================================================
     
-    private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+    /**
+     * Premium text styling configuration.
+     */
+    object Style {
+        // Main text colors - Rich gradient
+        var textColorPrimary: Int = Color.rgb(25, 35, 120)     // Deep indigo
+        var textColorSecondary: Int = Color.rgb(50, 70, 180)   // Bright blue
+        
+        // Glow/Shadow colors
+        var glowColorOuter: Int = Color.argb(60, 100, 150, 255)  // Soft blue glow
+        var glowColorInner: Int = Color.argb(120, 255, 255, 255)  // White inner glow
+        var shadowColor: Int = Color.argb(180, 0, 0, 0)           // Strong shadow
+        var ambientShadowColor: Int = Color.argb(40, 0, 0, 0)     // Soft ambient
+        
+        // Effect parameters
+        var outerGlowRadius: Float = 12f
+        var innerGlowRadius: Float = 4f
+        var shadowOffsetX: Float = 2f
+        var shadowOffsetY: Float = 3f
+        var shadowRadius: Float = 6f
+        var strokeWidth: Float = 4f
+        
+        // Status indicator
+        var statusDotSize: Float = 12f
+        var statusDotMargin: Float = 35f
+        var statusGlowRadius: Float = 8f
+        
+        // Typography
+        var fontScaleX: Float = 1.12f   // Slightly wider for Russian
+        var letterSpacing: Float = 0.02f
+        var lineHeightMultiplier: Float = 1.15f
+        
+        // Legacy compatibility
+        var textColor: Int
+            get() = textColorPrimary
+            set(value) { textColorPrimary = value }
+        var shadowWidth: Float = strokeWidth
+    }
+    
+    // ============================================================================
+    // PAINT OBJECTS (Premium Multi-Layer System)
+    // ============================================================================
+    
+    // Layer 1: Outer glow (furthest back)
+    private val outerGlowPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Style.glowColorOuter
+        textSize = 24f
+        typeface = Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.LEFT
+        maskFilter = BlurMaskFilter(Style.outerGlowRadius, BlurMaskFilter.Blur.NORMAL)
+    }
+    
+    // Layer 2: Drop shadow
+    private val shadowPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Style.shadowColor
+        textSize = 24f
+        typeface = Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.LEFT
+        maskFilter = BlurMaskFilter(Style.shadowRadius, BlurMaskFilter.Blur.NORMAL)
+    }
+    
+    // Layer 3: Stroke outline
+    private val strokePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
+        textSize = 24f
+        typeface = Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.LEFT
+        style = Paint.Style.STROKE
+        strokeWidth = Style.strokeWidth
+        strokeJoin = Paint.Join.ROUND
+        strokeCap = Paint.Cap.ROUND
+        isSubpixelText = true
+    }
+    
+    // Layer 4: Main text fill with gradient
+    private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Style.textColorPrimary
         textSize = 24f
         typeface = Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.LEFT
         isSubpixelText = true
         isLinearText = true
         hinting = Paint.HINTING_ON
+        letterSpacing = Style.letterSpacing
     }
     
-    private val shadowPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.BLACK
+    // Layer 5: Inner highlight (top layer)
+    private val innerGlowPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Style.glowColorInner
         textSize = 24f
         typeface = Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.LEFT
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-        isSubpixelText = true
+        maskFilter = BlurMaskFilter(Style.innerGlowRadius, BlurMaskFilter.Blur.INNER)
     }
     
+    // Debug paints
     private val debugPaint = Paint().apply {
         color = Color.argb(100, 255, 0, 0)
         style = Paint.Style.FILL
@@ -110,7 +201,12 @@ class TextOverlay(context: Context) : View(context) {
         textSize = 10f
     }
     
+    // Status indicator paints
     private val statusPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    
+    private val statusGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
     
@@ -121,26 +217,11 @@ class TextOverlay(context: Context) : View(context) {
     }
     
     // ============================================================================
-    // CONFIGURATION
-    // ============================================================================
-    
-    /**
-     * Text styling configuration.
-     */
-    object Style {
-        var textColor: Int = Color.rgb(0, 0, 139) // Dark Blue
-        var shadowColor: Int = Color.BLACK
-        var shadowWidth: Float = 3f
-        var statusDotSize: Float = 10f
-        var statusDotMargin: Float = 30f
-    }
-    
-    // ============================================================================
     // INITIALIZATION
     // ============================================================================
     
     init {
-        // Enable hardware acceleration
+        // Enable hardware acceleration for smooth rendering
         setLayerType(LAYER_TYPE_HARDWARE, null)
         
         // Make view transparent and non-interactive
@@ -148,185 +229,299 @@ class TextOverlay(context: Context) : View(context) {
         isFocusable = false
         isFocusableInTouchMode = false
         
+        // Try to load premium font
+        loadPremiumFont()
+        
         // Apply initial style
         applyStyle()
         
-        Logger.d(TAG, "TextOverlay initialized")
+        Logger.d(TAG, "Premium TextOverlay initialized with multi-layer effects")
+    }
+    
+    private fun loadPremiumFont() {
+        try {
+            // Try to load Roboto Medium for better Russian typography
+            val typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            textPaint.typeface = typeface
+            strokePaint.typeface = typeface
+            shadowPaint.typeface = typeface
+            outerGlowPaint.typeface = typeface
+            innerGlowPaint.typeface = typeface
+        } catch (e: Exception) {
+            Logger.d(TAG, "Using default font: ${e.message}")
+        }
     }
     
     private fun applyStyle() {
-        textPaint.color = Style.textColor
+        // Update all paints with current style
+        textPaint.color = Style.textColorPrimary
+        textPaint.textScaleX = Style.fontScaleX
+        textPaint.letterSpacing = Style.letterSpacing
+        
+        strokePaint.strokeWidth = Style.strokeWidth
+        strokePaint.textScaleX = Style.fontScaleX
+        
         shadowPaint.color = Style.shadowColor
-        shadowPaint.strokeWidth = Style.shadowWidth
+        shadowPaint.textScaleX = Style.fontScaleX
+        
+        outerGlowPaint.color = Style.glowColorOuter
+        outerGlowPaint.textScaleX = Style.fontScaleX
+        
+        innerGlowPaint.color = Style.glowColorInner
+        innerGlowPaint.textScaleX = Style.fontScaleX
     }
     
     // ============================================================================
-    // DRAWING
+    // PREMIUM DRAWING
     // ============================================================================
     
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         
-        // Draw all text items
+        // Update animation time
+        val currentTime = System.currentTimeMillis()
+        animationTime += currentTime - lastDrawTime
+        lastDrawTime = currentTime
+        
+        // Draw all text items with premium effects
         for (item in textItems) {
-            drawTranslatedText(canvas, item)
+            drawPremiumText(canvas, item)
         }
         
-        // Draw status indicator
-        drawStatusIndicator(canvas)
+        // Draw premium status indicator
+        drawPremiumStatusIndicator(canvas)
         
         // Draw debug overlay if enabled
         if (debugMode) {
             drawDebugOverlay(canvas)
         }
+        
+        // Request redraw for animations
+        if (currentStatus == Status.ACTIVE || currentStatus == Status.INITIALIZING) {
+            postInvalidateDelayed(16) // ~60fps for smooth animation
+        }
     }
     
     /**
-     * Draw a single translated text item with shadow for contrast.
+     * Draw a single translated text item with premium multi-layer effects.
      */
-    private fun drawTranslatedText(canvas: Canvas, item: TranslatedText) {
+    private fun drawPremiumText(canvas: Canvas, item: TranslatedText) {
         // Debug: draw background
         if (debugMode) {
             canvas.drawRect(item.bounds, debugPaint)
         }
 
-        // --- 1. CONFIGURATION ---
-        // "3 times bigger" -> huge font. Default was 24, now ~72.
-        // Let's autoscaling take care of fitting, but start BIG.
-        // "1.5x" request -> Respect limits
-        val targetFontSize = item.fontSize.coerceAtLeast(20f) 
-        textPaint.textSize = targetFontSize
-        // "textning kengligini 1.75 baravar" (Width 1.75x, Height 1.5x -> Ratio ~1.17)
-        textPaint.textScaleX = 1.17f 
+        // --- CONFIGURATION ---
+        val targetFontSize = item.fontSize.coerceAtLeast(20f)
         
-        shadowPaint.textSize = targetFontSize
-        shadowPaint.textScaleX = 1.17f
-        shadowPaint.strokeWidth = 5f 
-        shadowPaint.style = Paint.Style.STROKE
+        // Update all paint sizes
+        listOf(textPaint, strokePaint, shadowPaint, outerGlowPaint, innerGlowPaint).forEach { paint ->
+            paint.textSize = targetFontSize
+            paint.textScaleX = Style.fontScaleX
+        }
+        
+        // Create gradient shader for main text
+        val gradientShader = LinearGradient(
+            0f, -targetFontSize * 0.8f,
+            0f, targetFontSize * 0.3f,
+            Style.textColorSecondary,
+            Style.textColorPrimary,
+            Shader.TileMode.CLAMP
+        )
         
         val availableWidth = (item.bounds.width() - 4f).coerceAtLeast(1f)
         val textWidth = textPaint.measureText(item.text)
         
-        // --- 2. POSITIONING ---
-        // "textni 90 pixelga ko'tar" -> -90f
+        // --- POSITIONING ---
         val x = item.bounds.left + 2f
         val anchorY = item.bounds.top
-        val yOffset = -90f 
+        val yOffset = -90f
         
-        // --- 3. RENDERING STRATEGY ---
+        // Calculate animated glow intensity
+        val glowPulse = (sin(animationTime * GLOW_PULSE_SPEED) * 0.15f + 0.85f).toFloat()
+        
+        // --- RENDERING ---
         if (textWidth <= availableWidth) {
-            // Case A: Fits on one line
+            // Single line rendering with premium effects
             val fontMetrics = textPaint.fontMetrics
             val lineY = anchorY + yOffset - (fontMetrics.descent + fontMetrics.ascent) / 2f
             
-            // Draw Outline (High contrast)
-            canvas.drawText(item.text, x, lineY, shadowPaint)
-            // Draw Fill
-            canvas.drawText(item.text, x, lineY, textPaint)
+            drawPremiumTextLayers(canvas, item.text, x, lineY, glowPulse, gradientShader)
+            
         } else {
-            // Case B: Too long -> Multi-line Wrap
-            val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                android.text.StaticLayout.Builder.obtain(item.text, 0, item.text.length, textPaint, availableWidth.toInt())
-                    .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
-                    .setLineSpacing(0f, 1.0f)
-                    .setIncludePad(false)
-                    .build()
-            } else {
-                @Suppress("DEPRECATION")
-                android.text.StaticLayout(
-                    item.text, 
-                    textPaint, 
-                    availableWidth.toInt(), 
-                    android.text.Layout.Alignment.ALIGN_NORMAL, 
-                    1.0f, 
-                    0f, 
-                    false
-                )
-            }
-            
-            // Draw Layout centered vertically at the offset position
-            canvas.save()
-            val layoutHeight = builder.height.toFloat()
-            val layoutTop = anchorY + yOffset - (layoutHeight / 2f)
-            
-            canvas.translate(x, layoutTop)
-            
-            // Draw Outline
-            val originalColor = textPaint.color
-            textPaint.style = Paint.Style.STROKE
-            textPaint.strokeWidth = 5f
-            textPaint.color = Color.BLACK
-            builder.draw(canvas)
-            
-            // Draw Fill
-            textPaint.style = Paint.Style.FILL
-            textPaint.strokeWidth = 0f
-            textPaint.color = originalColor
-            builder.draw(canvas)
-            
-            canvas.restore()
+            // Multi-line rendering with premium effects
+            drawPremiumMultilineText(canvas, item, x, anchorY + yOffset, availableWidth, glowPulse, gradientShader)
         }
         
         // Debug: draw bounds and info
         if (debugMode) {
             canvas.drawRect(item.bounds, debugBorderPaint)
-            val info = "${targetFontSize.toInt()}px"
+            val info = "${targetFontSize.toInt()}px | ${item.text.length} chars"
             canvas.drawText(info, item.bounds.left, item.bounds.top - 2f, debugInfoPaint)
         }
     }
     
     /**
-     * Fit text to available width with ellipsis.
+     * Draw text with all premium layers (glow, shadow, stroke, fill, highlight).
      */
-    private fun fitTextToWidth(text: String, maxWidth: Float): String {
-        val textWidth = textPaint.measureText(text)
-        if (textWidth <= maxWidth || maxWidth <= 20f) return text
+    private fun drawPremiumTextLayers(
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        y: Float,
+        glowPulse: Float,
+        gradientShader: Shader
+    ) {
+        // Layer 1: Outer glow (pulsing)
+        outerGlowPaint.alpha = (60 * glowPulse).toInt()
+        canvas.drawText(text, x, y, outerGlowPaint)
         
-        val ellipsis = "…"
-        val ellipsisWidth = textPaint.measureText(ellipsis)
-        val targetWidth = maxWidth - ellipsisWidth
+        // Layer 2: Drop shadow
+        canvas.drawText(text, x + Style.shadowOffsetX, y + Style.shadowOffsetY, shadowPaint)
         
-        if (targetWidth <= 0) return ellipsis
+        // Layer 3: White stroke outline
+        canvas.drawText(text, x, y, strokePaint)
         
-        // Binary search for optimal length
-        var low = 0
-        var high = text.length
-        while (low < high) {
-            val mid = (low + high + 1) / 2
-            if (textPaint.measureText(text, 0, mid) <= targetWidth) {
-                low = mid
-            } else {
-                high = mid - 1
-            }
-        }
+        // Layer 4: Main text fill with gradient
+        canvas.save()
+        canvas.translate(x, y)
+        textPaint.shader = gradientShader
+        canvas.drawText(text, 0f, 0f, textPaint)
+        textPaint.shader = null
+        canvas.restore()
         
-        return if (low < text.length) text.substring(0, low) + ellipsis else text
+        // Layer 5: Inner highlight (subtle top glow)
+        innerGlowPaint.alpha = (40 * glowPulse).toInt()
+        // canvas.drawText(text, x, y - 1f, innerGlowPaint) // Optional: can be too heavy
     }
     
     /**
-     * Draw status indicator dot.
+     * Draw multi-line text with premium effects.
      */
-    private fun drawStatusIndicator(canvas: Canvas) {
-        val color = when (currentStatus) {
-            Status.INITIALIZING -> Color.YELLOW
-            Status.ACTIVE -> Color.GREEN
-            Status.PAUSED -> Color.GRAY
-            Status.ERROR -> Color.RED
+    private fun drawPremiumMultilineText(
+        canvas: Canvas,
+        item: TranslatedText,
+        x: Float,
+        baseY: Float,
+        availableWidth: Float,
+        glowPulse: Float,
+        gradientShader: Shader
+    ) {
+        val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            android.text.StaticLayout.Builder.obtain(item.text, 0, item.text.length, textPaint, availableWidth.toInt())
+                .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(0f, Style.lineHeightMultiplier)
+                .setIncludePad(false)
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            android.text.StaticLayout(
+                item.text,
+                textPaint,
+                availableWidth.toInt(),
+                android.text.Layout.Alignment.ALIGN_NORMAL,
+                Style.lineHeightMultiplier,
+                0f,
+                false
+            )
         }
         
-        statusPaint.color = color
+        val layoutHeight = builder.height.toFloat()
+        val layoutTop = baseY - (layoutHeight / 2f)
+        
+        canvas.save()
+        canvas.translate(x, layoutTop)
+        
+        // Draw shadow layer
+        canvas.save()
+        canvas.translate(Style.shadowOffsetX, Style.shadowOffsetY)
+        val originalShadowStyle = shadowPaint.style
+        shadowPaint.style = Paint.Style.FILL
+        drawLayoutWithPaint(builder, canvas, shadowPaint)
+        shadowPaint.style = originalShadowStyle
+        canvas.restore()
+        
+        // Draw stroke outline
+        val originalTextStyle = textPaint.style
+        val originalTextColor = textPaint.color
+        textPaint.style = Paint.Style.STROKE
+        textPaint.strokeWidth = Style.strokeWidth
+        textPaint.color = Color.WHITE
+        drawLayoutWithPaint(builder, canvas, textPaint)
+        
+        // Draw main fill with gradient
+        textPaint.style = Paint.Style.FILL
+        textPaint.strokeWidth = 0f
+        textPaint.shader = gradientShader
+        drawLayoutWithPaint(builder, canvas, textPaint)
+        
+        // Restore original state
+        textPaint.shader = null
+        textPaint.style = originalTextStyle
+        textPaint.color = originalTextColor
+        
+        canvas.restore()
+    }
+    
+    /**
+     * Helper to draw StaticLayout with custom paint.
+     */
+    private fun drawLayoutWithPaint(layout: android.text.StaticLayout, canvas: Canvas, paint: TextPaint) {
+        val originalPaint = layout.paint
+        // Note: StaticLayout uses its own paint, but we can draw text line by line for custom effects
+        for (i in 0 until layout.lineCount) {
+            val lineStart = layout.getLineStart(i)
+            val lineEnd = layout.getLineEnd(i)
+            val lineText = layout.text.subSequence(lineStart, lineEnd).toString()
+            val lineY = layout.getLineBaseline(i).toFloat()
+            val lineX = layout.getLineLeft(i)
+            canvas.drawText(lineText, lineX, lineY, paint)
+        }
+    }
+    
+    /**
+     * Draw premium status indicator with glow effects.
+     */
+    private fun drawPremiumStatusIndicator(canvas: Canvas) {
+        val (color, glowColor) = when (currentStatus) {
+            Status.INITIALIZING -> Pair(Color.rgb(255, 200, 0), Color.argb(100, 255, 200, 0))
+            Status.ACTIVE -> Pair(Color.rgb(0, 220, 100), Color.argb(100, 0, 220, 100))
+            Status.PAUSED -> Pair(Color.rgb(150, 150, 150), Color.argb(50, 150, 150, 150))
+            Status.ERROR -> Pair(Color.rgb(255, 60, 60), Color.argb(100, 255, 60, 60))
+        }
         
         val cx = Style.statusDotMargin
         val cy = Style.statusDotMargin
         val radius = Style.statusDotSize
         
-        // Draw filled dot
+        // Animated glow pulse for active states
+        val pulse = if (currentStatus == Status.ACTIVE || currentStatus == Status.ERROR) {
+            (sin(animationTime * 0.005) * 0.4 + 0.6).toFloat()
+        } else {
+            0.5f
+        }
+        
+        // Draw outer glow
+        statusGlowPaint.color = glowColor
+        statusGlowPaint.maskFilter = BlurMaskFilter(Style.statusGlowRadius * pulse, BlurMaskFilter.Blur.NORMAL)
+        statusGlowPaint.alpha = (150 * pulse).toInt()
+        canvas.drawCircle(cx, cy, radius + Style.statusGlowRadius, statusGlowPaint)
+        
+        // Draw filled dot with gradient-like effect
+        statusPaint.color = color
         canvas.drawCircle(cx, cy, radius, statusPaint)
+        
+        // Draw inner highlight
+        val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = Color.argb(100, 255, 255, 255)
+            style = Paint.Style.FILL
+        }
+        canvas.drawCircle(cx - radius * 0.25f, cy - radius * 0.25f, radius * 0.4f, highlightPaint)
         
         // Draw blinking stroke for warning states
         if (currentStatus == Status.ERROR || currentStatus == Status.INITIALIZING) {
-            if (System.currentTimeMillis() % 1000 < 500) {
-                canvas.drawCircle(cx, cy, radius + 2f, statusStrokePaint)
+            if (System.currentTimeMillis() % 1000 < STATUS_BLINK_INTERVAL) {
+                canvas.drawCircle(cx, cy, radius + 3f, statusStrokePaint)
             }
         }
     }
@@ -343,10 +538,18 @@ class TextOverlay(context: Context) : View(context) {
         }
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), borderPaint)
         
+        // Stats background
+        val statsBgPaint = Paint().apply {
+            color = Color.argb(180, 0, 0, 0)
+            style = Paint.Style.FILL
+        }
+        canvas.drawRect(0f, height - 30f, 300f, height.toFloat(), statsBgPaint)
+        
         // Stats text
         val statsPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.CYAN
-            textSize = 12f
+            textSize = 14f
+            typeface = Typeface.MONOSPACE
         }
         val stats = "Items: ${textItems.size} | Status: $currentStatus"
         canvas.drawText(stats, 10f, height - 10f, statsPaint)
@@ -399,14 +602,17 @@ class TextOverlay(context: Context) : View(context) {
      */
     fun setDefaultTextSize(size: Float) {
         textPaint.textSize = size
+        strokePaint.textSize = size
         shadowPaint.textSize = size
+        outerGlowPaint.textSize = size
+        innerGlowPaint.textSize = size
     }
     
     /**
-     * Set text color.
+     * Set text color (updates gradient primary color).
      */
     fun setTextColor(color: Int) {
-        Style.textColor = color
+        Style.textColorPrimary = color
         textPaint.color = color
     }
     
@@ -419,11 +625,21 @@ class TextOverlay(context: Context) : View(context) {
     }
     
     /**
-     * Set shadow stroke width.
+     * Set shadow/stroke width.
      */
     fun setShadowWidth(width: Float) {
-        Style.shadowWidth = width
-        shadowPaint.strokeWidth = width
+        Style.strokeWidth = width
+        strokePaint.strokeWidth = width
+    }
+    
+    /**
+     * Set glow colors for premium effects.
+     */
+    fun setGlowColors(outerGlow: Int, innerGlow: Int) {
+        Style.glowColorOuter = outerGlow
+        Style.glowColorInner = innerGlow
+        outerGlowPaint.color = outerGlow
+        innerGlowPaint.color = innerGlow
     }
     
     /**
@@ -453,6 +669,7 @@ class TextOverlay(context: Context) : View(context) {
         repeat(8) {
             val mid = (low + high) / 2f
             measurePaint.textSize = mid
+            measurePaint.textScaleX = Style.fontScaleX
             if (measurePaint.measureText(text) <= availableWidth) {
                 low = mid
             } else {
@@ -463,3 +680,4 @@ class TextOverlay(context: Context) : View(context) {
         return low.coerceIn(minSize, maxSize)
     }
 }
+
