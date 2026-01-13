@@ -204,16 +204,16 @@ class TextOverlay(context: Context) : View(context) {
         val textWidth = textPaint.measureText(item.text)
         
         // --- 2. POSITIONING ---
-        // "20 pixels higher" -> Previous -50f, now -70f
+        // "better 25 pixels" -> Adjusted from -90f to -25f
         val x = item.bounds.left + 2f
-        val centerY = item.bounds.centerY()
-        val yOffset = -70f 
+        val anchorY = item.bounds.top
+        val yOffset = -25f 
         
         // --- 3. RENDERING STRATEGY ---
         if (textWidth <= availableWidth) {
             // Case A: Fits on one line
             val fontMetrics = textPaint.fontMetrics
-            val lineY = centerY - (fontMetrics.descent + fontMetrics.ascent) / 2f + yOffset
+            val lineY = anchorY + yOffset - (fontMetrics.descent + fontMetrics.ascent) / 2f
             
             // Draw Outline (High contrast)
             canvas.drawText(item.text, x, lineY, shadowPaint)
@@ -221,6 +221,7 @@ class TextOverlay(context: Context) : View(context) {
             canvas.drawText(item.text, x, lineY, textPaint)
         } else {
             // Case B: Too long -> Multi-line Wrap
+            val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                 android.text.StaticLayout.Builder.obtain(item.text, 0, item.text.length, textPaint, availableWidth.toInt())
                     .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
@@ -243,7 +244,7 @@ class TextOverlay(context: Context) : View(context) {
             // Draw Layout centered vertically at the offset position
             canvas.save()
             val layoutHeight = builder.height.toFloat()
-            val layoutTop = centerY + yOffset - (layoutHeight / 2f)
+            val layoutTop = anchorY + yOffset - (layoutHeight / 2f)
             
             canvas.translate(x, layoutTop)
             

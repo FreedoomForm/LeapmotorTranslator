@@ -388,8 +388,8 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun calculateFontSize(text: String, bounds: RectF): Float {
-        // "Simply text 1.5" -> 1.5x height multiplier
-        val heightBasedSize = bounds.height() * 1.5f 
+        // "set 2 scale up" -> 2.0x height multiplier
+        val heightBasedSize = bounds.height() * 2.0f 
         val avgCharWidth = 0.6f
         val requiredWidth = text.length * heightBasedSize * avgCharWidth
         
@@ -399,8 +399,8 @@ class TranslationService : AccessibilityService() {
             heightBasedSize
         }
         
-        // Reasonable range for 1.5x
-        return widthBasedSize.coerceIn(20f, 100f)
+        // Reasonable range for 2.0x
+        return widthBasedSize.coerceIn(30f, 150f)
     }
     
     // ========================================================================
@@ -469,11 +469,18 @@ class TranslationService : AccessibilityService() {
         
         // Update eraser
         val boundingBoxes = elements.map { element ->
+            // Dynamic Eraser Size Logic:
+            // Scale padding based on text height (bigger text needs more buffer)
+            // Horizontal: 20% of height, Vertical: 10% of height
+            val h = element.bounds.height()
+            val pHoriz = (h * 0.2f).coerceAtLeast(6f)
+            val pVert = (h * 0.1f).coerceAtLeast(4f)
+            
             RectF(
-                element.bounds.left,
-                element.predictedY,
-                element.bounds.right,
-                element.predictedY + element.bounds.height()
+                element.bounds.left - pHoriz,
+                element.predictedY - pVert,
+                element.bounds.right + pHoriz,
+                element.predictedY + h + pVert
             )
         }
         
