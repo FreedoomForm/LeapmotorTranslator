@@ -26,13 +26,13 @@ class KalmanFilter2D private constructor() {
      * Process noise - higher values make filter more responsive but noisier.
      * Recommended: 0.001 - 0.1
      */
-    var processNoise: Float = 0.01f
+    var processNoise: Float = 1.0f
     
     /**
      * Measurement noise - higher values make filter smoother but laggier.
      * Recommended: 1.0 - 10.0
      */
-    var measurementNoise: Float = 1.0f
+    var measurementNoise: Float = 0.1f
     
     /**
      * Prediction lookahead time in milliseconds.
@@ -138,8 +138,8 @@ class KalmanFilter2D private constructor() {
         // Kalman gains
         val kx = pxPred / (pxPred + measurementNoise)
         val ky = pyPred / (pyPred + measurementNoise)
-        val kvx = pvxPred / (pvxPred + measurementNoise * 2f)
-        val kvy = pvyPred / (pvyPred + measurementNoise * 2f)
+        val kvx = pvxPred / (pvxPred + measurementNoise)
+        val kvy = pvyPred / (pvyPred + measurementNoise)
         
         // State update
         x = xPred + kx * innovX
