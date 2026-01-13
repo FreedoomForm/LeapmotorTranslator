@@ -148,8 +148,8 @@ class KalmanFilter2D private constructor() {
         // Velocity update using innovation
         val measuredVx = innovX / dt
         val measuredVy = innovY / dt
-        vx += kvx * (measuredVx - vx)
-        vy += kvy * (measuredVy - vy)
+        vx += kvx * measuredVx
+        vy += kvy * measuredVy
         
         // Error update
         px = (1f - kx) * pxPred
