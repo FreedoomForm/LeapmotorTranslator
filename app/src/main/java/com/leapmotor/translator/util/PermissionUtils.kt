@@ -16,6 +16,11 @@ object PermissionUtils {
                Build.MANUFACTURER.equals("Redmi", ignoreCase = true) ||
                Build.MANUFACTURER.equals("Poco", ignoreCase = true)
     }
+    
+    /**
+     * Alias for isXiaomi for compatibility.
+     */
+    fun isXiaomiDevice(): Boolean = isXiaomi()
 
     /**
      * Open MIUI Autostart permission settings.
@@ -66,6 +71,13 @@ object PermissionUtils {
                  openAppDetails(context)
              }
         }
+    }
+    
+    /**
+     * Open MIUI permission settings - main entry point.
+     */
+    fun openMIUIPermissionSettings(context: Context) {
+        openMiuiPopupPermission(context)
     }
 
     /**

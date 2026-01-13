@@ -17,6 +17,7 @@ import com.leapmotor.translator.core.containsChinese
 import com.leapmotor.translator.domain.repository.TranslationRepository
 import com.leapmotor.translator.filter.KalmanFilter2D
 import com.leapmotor.translator.filter.KalmanFilter2DPool
+import com.leapmotor.translator.renderer.EraserSurfaceView
 import com.leapmotor.translator.renderer.OverlayRenderer
 import com.leapmotor.translator.renderer.TextOverlay
 import dagger.hilt.android.AndroidEntryPoint
@@ -51,7 +52,21 @@ class TranslationService : AccessibilityService() {
         private const val UPDATE_DEBOUNCE_MS = 50L
         private const val MAX_NODES_PER_FRAME = 128
         private const val ELEMENT_TIMEOUT_MS = 500L
+        private const val MAX_HISTORY_SIZE = 100
+        
+        // History log for debug activity
+        val historyLog = java.util.concurrent.ConcurrentLinkedDeque<HistoryEntry>()
     }
+    
+    /**
+     * History entry for debug logging.
+     */
+    data class HistoryEntry(
+        val original: String,
+        val translated: String,
+        val bounds: android.graphics.Rect,
+        val time: Long = System.currentTimeMillis()
+    )
     
     // ========================================================================
     // INJECTED DEPENDENCIES
@@ -68,7 +83,7 @@ class TranslationService : AccessibilityService() {
     
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
-    private var eraserView: OverlayRenderer.EraserSurfaceView? = null
+    private var eraserView: EraserSurfaceView? = null
     private var textOverlay: TextOverlay? = null
     
     private var debugMode = false
@@ -396,7 +411,7 @@ class TranslationService : AccessibilityService() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         
         // Create eraser view (OpenGL)
-        eraserView = OverlayRenderer.EraserSurfaceView(this)
+        eraserView = EraserSurfaceView(this)
         
         // Create text overlay
         textOverlay = TextOverlay(this)
@@ -459,7 +474,7 @@ class TranslationService : AccessibilityService() {
                 element.predictedY + element.bounds.height()
             )
         }
-        eraserView?.getRenderer()?.updateBoundingBoxes(boundingBoxes)
+        eraserView?.renderer?.updateBoundingBoxes(boundingBoxes)
         eraserView?.requestRender()
         
         // Update text overlay
@@ -496,7 +511,7 @@ class TranslationService : AccessibilityService() {
         releaseFilters()
         serviceScope.launch(Dispatchers.Main) {
             textOverlay?.clear()
-            eraserView?.getRenderer()?.updateBoundingBoxes(emptyList())
+            eraserView?.renderer?.updateBoundingBoxes(emptyList())
             eraserView?.requestRender()
         }
     }

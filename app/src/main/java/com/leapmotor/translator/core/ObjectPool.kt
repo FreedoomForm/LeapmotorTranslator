@@ -181,7 +181,8 @@ class ObjectPool<T : Any>(
  * Pre-configured with appropriate pool size and reset logic.
  */
 object RectFPool {
-    private val pool = ObjectPool(
+    @PublishedApi
+    internal val pool = ObjectPool(
         maxSize = 128,
         factory = { android.graphics.RectF() },
         reset = { it.setEmpty() }
@@ -197,7 +198,8 @@ object RectFPool {
  * Pool of StringBuilder objects for text operations.
  */
 object StringBuilderPool {
-    private val pool = ObjectPool(
+    @PublishedApi
+    internal val pool = ObjectPool(
         maxSize = 32,
         factory = { StringBuilder(256) },
         reset = { it.clear() }

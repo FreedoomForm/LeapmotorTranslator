@@ -377,8 +377,6 @@ class TranslationManager {
     }
     
     /**
-     * Cache statistics data class.
-     */
     data class CacheStats(
         val size: Int,
         val hits: Long,
@@ -387,76 +385,5 @@ class TranslationManager {
     )
 }
 
-/**
- * Common UI translations for Leapmotor C11.
- * Pre-loaded to cache for instant display.
- */
-object CommonTranslations {
-    
-    val LEAPMOTOR_UI = mapOf(
-        // Navigation
-        "导航" to "Навигация",
-        "地图" to "Карта",
-        "目的地" to "Пункт назначения",
-        "路线" to "Маршрут",
-        "到达时间" to "Время прибытия",
-        "剩余距离" to "Оставшееся расстояние",
-        
-        // Climate control
-        "空调" to "Климат",
-        "温度" to "Температура",
-        "风量" to "Скорость вентилятора",
-        "自动" to "Авто",
-        "关闭" to "Выкл",
-        "打开" to "Вкл",
-        "制冷" to "Охлаждение",
-        "制热" to "Обогрев",
-        "座椅加热" to "Подогрев сидений",
-        "座椅通风" to "Вентиляция сидений",
-        
-        // Media
-        "音乐" to "Музыка",
-        "收音机" to "Радио",
-        "蓝牙" to "Bluetooth",
-        "音量" to "Громкость",
-        "播放" to "Воспроизвести",
-        "暂停" to "Пауза",
-        "下一首" to "Следующий",
-        "上一首" to "Предыдущий",
-        
-        // Vehicle
-        "车辆" to "Автомобиль",
-        "设置" to "Настройки",
-        "电池" to "Батарея",
-        "充电" to "Зарядка",
-        "续航" to "Запас хода",
-        "公里" to "км",
-        "驾驶模式" to "Режим вождения",
-        "运动" to "Спорт",
-        "经济" to "Эко",
-        "舒适" to "Комфорт",
-        
-        // Parking / Camera
-        "倒车" to "Задний ход",
-        "雷达" to "Радар",
-        "摄像头" to "Камера",
-        "全景" to "Панорама",
-        "前方" to "Спереди",
-        "后方" to "Сзади",
-        "左侧" to "Слева",
-        "右侧" to "Справа",
-        
-        // Alerts
-        "警告" to "Предупреждение",
-        "错误" to "Ошибка",
-        "确认" to "Подтвердить",
-        "取消" to "Отмена",
-        "返回" to "Назад",
-        "主页" to "Главная",
-        
-        // Time
-        "小时" to "ч",
-        "分钟" to "мин",
-        "秒" to "сек"
-    )
-}
+// CommonTranslations is now defined in CommonTranslations.kt
+

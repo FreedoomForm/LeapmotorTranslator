@@ -226,7 +226,8 @@ class KalmanFilter2D private constructor() {
  */
 object KalmanFilter2DPool {
     
-    private val pool = ObjectPool(
+    @PublishedApi
+    internal val pool = ObjectPool(
         maxSize = 128,
         factory = { KalmanFilter2D.create() },
         reset = { it.reset() }
