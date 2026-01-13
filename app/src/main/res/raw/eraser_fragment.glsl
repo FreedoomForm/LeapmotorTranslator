@@ -297,18 +297,24 @@ void main() {
     // Get comprehensive box information
     BoxInfo boxInfo = getBoxInfo(vScreenPos);
     
-    if (boxInfo.inside && boxInfo.coverage > 0.001) {
-        // === INSIDE TEXT BOX: Apply premium eraser effect ===
+    if (boxInfo.inside) {
+        // === INSIDE TEXT BOX: Apply FULL OPACITY eraser to completely hide Chinese text ===
         
         // Get premium fill color with gradients and texture
         vec4 fillColor = getPremiumFill(vScreenPos, boxInfo.center, boxInfo.size);
         
-        // Apply smooth coverage with premium alpha
-        // Using squared coverage for smoother visual edges
-        float smoothAlpha = boxInfo.coverage * boxInfo.coverage;
-        smoothAlpha = mix(smoothAlpha, 1.0, smoothAlpha); // Bias towards full opacity
+        // CRITICAL: Use FULL OPACITY to completely hide Chinese text underneath
+        // Only apply slight edge softness at the very border (last 2 pixels)
+        float edgeAlpha = 1.0;
+        if (boxInfo.coverage < 1.0) {
+            // Only soften the extreme outer edge (last 2 pixels)
+            edgeAlpha = smoothstep(0.0, 0.3, boxInfo.coverage);
+        }
         
-        fragColor = vec4(fillColor.rgb, smoothAlpha);
+        // Ensure minimum 95% opacity even at edges to fully hide text
+        float finalAlpha = max(edgeAlpha, 0.95);
+        
+        fragColor = vec4(fillColor.rgb, finalAlpha);
         
     } else if (boxInfo.distToEdge < GLOW_RADIUS && boxInfo.distToEdge > 0.0) {
         // === NEAR TEXT BOX: Subtle outer glow for premium look ===

@@ -407,18 +407,36 @@ class TranslationService : AccessibilityService() {
     // OVERLAY MANAGEMENT
     // ========================================================================
     
+    // Container for both overlay views
+    private var overlayContainer: android.widget.FrameLayout? = null
+    
     private fun initializeOverlay() {
         if (isOverlayShowing) return
         
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         
-        // Create eraser view (OpenGL)
+        // Create container
+        overlayContainer = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        }
+        
+        // Create eraser view (OpenGL) - added first (bottom layer)
         eraserView = EraserSurfaceView(this)
         
-        // Create text overlay
+        // Create text overlay - added second (top layer)
         textOverlay = TextOverlay(this)
         
-        // Overlay layout params
+        // Add views to container: eraser first (bottom), text second (top)
+        overlayContainer?.addView(eraserView, android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        overlayContainer?.addView(textOverlay, android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        
+        // Overlay layout params for the container
         val layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -437,13 +455,12 @@ class TranslationService : AccessibilityService() {
         }
         
         try {
-            windowManager?.addView(eraserView, layoutParams)
-            windowManager?.addView(textOverlay, layoutParams)
+            windowManager?.addView(overlayContainer, layoutParams)
             isOverlayShowing = true
             
             textOverlay?.setStatus(TextOverlay.Status.ACTIVE)
             
-            Logger.i(TAG, "Overlay initialized")
+            Logger.i(TAG, "Overlay initialized with FrameLayout container")
         } catch (e: Exception) {
             Logger.e(TAG, "Failed to add overlay", e)
         }
@@ -451,12 +468,12 @@ class TranslationService : AccessibilityService() {
     
     private fun removeOverlay() {
         try {
-            eraserView?.let { windowManager?.removeView(it) }
-            textOverlay?.let { windowManager?.removeView(it) }
+            overlayContainer?.let { windowManager?.removeView(it) }
         } catch (e: Exception) {
             Logger.e(TAG, "Error removing overlay", e)
         }
         
+        overlayContainer = null
         eraserView = null
         textOverlay = null
         isOverlayShowing = false

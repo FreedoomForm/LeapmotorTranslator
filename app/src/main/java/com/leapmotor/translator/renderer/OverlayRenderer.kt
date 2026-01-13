@@ -82,21 +82,32 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
     
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         try {
+            android.util.Log.d(TAG, "Initializing OpenGL surface...")
+            
             // Set clear color to fully transparent
             GLES30.glClearColor(0f, 0f, 0f, 0f)
             
-            // Enable blending for transparency
+            // Disable depth testing (not needed for 2D overlay)
+            GLES30.glDisable(GLES30.GL_DEPTH_TEST)
+            
+            // Enable blending for transparency with premultiplied alpha
             GLES30.glEnable(GLES30.GL_BLEND)
+            // Use standard alpha blending - this works best for overlays
             GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
+            // Alternative: premultiplied alpha (uncomment if standard doesn't work)
+            // GLES30.glBlendFunc(GLES30.GL_ONE, GLES30.GL_ONE_MINUS_SRC_ALPHA)
             
             // Initialize shaders
             initShaders()
+            android.util.Log.d(TAG, "Shaders compiled successfully, programId=$programId")
             
             // Initialize geometry buffers
             initBuffers()
             
             // Record start time for animation
             startTime = SystemClock.elapsedRealtime()
+            
+            android.util.Log.d(TAG, "OpenGL surface initialized successfully")
         } catch (e: Exception) {
             android.util.Log.e(TAG, "OpenGL Initialization Failed: ${e.message}")
             e.printStackTrace()
@@ -147,6 +158,11 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
                 GLES30.glUniform1i(uBoxCountLoc, boxCount)
                 if (boxCount > 0) {
                     GLES30.glUniform4fv(uBoundingBoxesLoc, boxCount, boundingBoxes, 0)
+                    // Debug: Log box info periodically (every ~60 frames)
+                    if ((SystemClock.elapsedRealtime() / 1000) % 3 == 0L && 
+                        (SystemClock.elapsedRealtime() % 1000) < 50) {
+                        android.util.Log.d(TAG, "Drawing $boxCount boxes. First box: (${boundingBoxes[0]}, ${boundingBoxes[1]}, ${boundingBoxes[2]}x${boundingBoxes[3]})")
+                    }
                 }
             }
             
@@ -298,29 +314,42 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
 
 /**
  * Custom GLSurfaceView configured for transparent overlay rendering.
+ * 
+ * CRITICAL: Uses setZOrderOnTop(true) to ensure the eraser renders
+ * ABOVE the underlying app content to properly hide Chinese text.
  */
 class EraserSurfaceView(context: Context) : GLSurfaceView(context) {
     
     val renderer: OverlayRenderer
     
+    companion object {
+        private const val TAG = "EraserSurfaceView"
+    }
+    
     init {
         // Configure for OpenGL ES 3.0
         setEGLContextClientVersion(3)
         
-        // Enable transparency
-        setEGLConfigChooser(8, 8, 8, 8, 0, 0)
+        // Enable transparency with 8-bit RGBA
+        setEGLConfigChooser(8, 8, 8, 8, 16, 0)
         holder.setFormat(PixelFormat.TRANSLUCENT)
         
         // Create and set renderer
         renderer = OverlayRenderer(context)
         setRenderer(renderer)
         
-        // Render only when dirty (on demand)
-        renderMode = RENDERMODE_WHEN_DIRTY
+        // CRITICAL: Use continuous rendering for smooth animation
+        // and to ensure boxes are always drawn
+        renderMode = RENDERMODE_CONTINUOUSLY
         
-        // Set transparent background
-        // MediaOverlay places it above the window but behind other Views (like TextOverlay)
+        // CRITICAL: Use MediaOverlay - this places GL above window content
+        // but BELOW other Views (like TextOverlay) in the same parent
         setZOrderMediaOverlay(true)
+        
+        // Make background fully transparent
+        holder.setFormat(PixelFormat.TRANSPARENT)
+        
+        android.util.Log.d(TAG, "EraserSurfaceView initialized with ZOrderMediaOverlay=true")
     }
     
     /**
@@ -334,6 +363,7 @@ class EraserSurfaceView(context: Context) : GLSurfaceView(context) {
      * Update bounding boxes and trigger redraw.
      */
     fun updateBoxes(boxes: List<RectF>) {
+        android.util.Log.d(TAG, "Updating ${boxes.size} bounding boxes")
         renderer.updateBoundingBoxes(boxes)
         requestRender()
     }
