@@ -69,8 +69,8 @@ class KalmanFilter2D private constructor() {
          * Create a new filter with default configuration.
          */
         fun create(
-            processNoise: Float = 0.01f,
-            measurementNoise: Float = 1.0f,
+            processNoise: Float = 1.0f,
+            measurementNoise: Float = 0.1f,
             predictionTimeMs: Long = 10L
         ): KalmanFilter2D = KalmanFilter2D().apply {
             this.processNoise = processNoise
