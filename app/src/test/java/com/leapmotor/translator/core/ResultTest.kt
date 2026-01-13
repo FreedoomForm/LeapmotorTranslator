@@ -167,8 +167,8 @@ class ResultTest {
     fun `onSuccess not called for error`() {
         var called = false
         
-        Result.error<String>("Error")
-            .onSuccess { called = true }
+        val result: Result<String> = Result.error("Error")
+        result.onSuccess { called = true }
         
         assertFalse(called)
     }
@@ -178,10 +178,10 @@ class ResultTest {
         var called = false
         var message: String? = null
         
-        Result.error<String>("Test error")
-            .onError { 
+        val result: Result<String> = Result.error("Test error")
+        result.onError { err ->
                 called = true
-                message = it.message
+                message = err.message
             }
         
         assertTrue(called)
@@ -204,8 +204,8 @@ class ResultTest {
     
     @Test
     fun `recover provides fallback for error`() {
-        val result: Result<String> = Result.error("Error")
-            .recover { "fallback" }
+        val errorResult: Result<String> = Result.error("Error")
+        val result = errorResult.recover { "fallback" }
         
         assertTrue(result.isSuccess)
         assertEquals("fallback", result.getOrNull())
@@ -221,8 +221,8 @@ class ResultTest {
     
     @Test
     fun `recoverWith chains recovery`() {
-        val result: Result<String> = Result.error("Error")
-            .recoverWith { Result.success("recovered") }
+        val errorResult: Result<String> = Result.error("Error")
+        val result = errorResult.recoverWith { Result.success("recovered") }
         
         assertTrue(result.isSuccess)
         assertEquals("recovered", result.getOrNull())
