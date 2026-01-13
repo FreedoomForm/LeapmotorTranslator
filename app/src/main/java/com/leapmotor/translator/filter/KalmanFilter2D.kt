@@ -70,12 +70,12 @@ class KalmanFilter2D private constructor() {
          */
         fun create(
             processNoise: Float = 1.0f,
-            measurementNoise: Float = 0.1f,
-            predictionTimeMs: Long = 10L
+            measurementNoise: Float = 0.01f, // Optimized default for faster tracking
+            predictionTimeMs: Long = 5L        // Optimized default to prevent overshoot
         ): KalmanFilter2D = KalmanFilter2D().apply {
             this.processNoise = processNoise
-            this.measurementNoise = 0.01f // Reduced for faster tracking
-            this.predictionTimeMs = 5L // Reduced to prevent overshoot
+            this.measurementNoise = measurementNoise
+            this.predictionTimeMs = predictionTimeMs
         }
     }
     
