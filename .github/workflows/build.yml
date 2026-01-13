@@ -11,6 +11,7 @@ on:
 env:
   JAVA_VERSION: '17'
   ANDROID_COMPILE_SDK: '34'
+  GRADLE_VERSION: '8.4'
   
 jobs:
   # ============================================================================
@@ -29,13 +30,14 @@ jobs:
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
-          cache: 'gradle'
           
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-        
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+          
       - name: Run Lint
-        run: ./gradlew lint
+        run: gradle lint
         
       - name: Upload Lint Results
         uses: actions/upload-artifact@v4
@@ -60,13 +62,14 @@ jobs:
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
-          cache: 'gradle'
           
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-        
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+          
       - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest
+        run: gradle testDebugUnitTest
         
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
@@ -99,13 +102,14 @@ jobs:
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
-          cache: 'gradle'
           
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-        
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+          
       - name: Build Debug APK
-        run: ./gradlew assembleDebug
+        run: gradle assembleDebug
         
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -131,13 +135,14 @@ jobs:
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
-          cache: 'gradle'
           
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-        
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+          
       - name: Build Release APK
-        run: ./gradlew assembleRelease
+        run: gradle assembleRelease
         
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
