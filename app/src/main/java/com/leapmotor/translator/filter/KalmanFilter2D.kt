@@ -32,7 +32,7 @@ class KalmanFilter2D private constructor() {
      * Measurement noise - higher values make filter smoother but laggier.
      * Recommended: 1.0 - 10.0
      */
-    var measurementNoise: Float = 2.0f
+    var measurementNoise: Float = 1.0f
     
     /**
      * Prediction lookahead time in milliseconds.
@@ -54,8 +54,8 @@ class KalmanFilter2D private constructor() {
     // Error covariances (diagonal approximation for performance)
     private var px: Float = 1f   // Position X error
     private var py: Float = 1f   // Position Y error
-    private var pvx: Float = 1f  // Velocity X error
-    private var pvy: Float = 1f  // Velocity Y error
+    private var pvx: Float = 100f  // Velocity X error (high initial uncertainty)
+    private var pvy: Float = 100f  // Velocity Y error (high initial uncertainty)
     
     // Timing
     private var lastUpdateTime: Long = 0L
@@ -70,7 +70,7 @@ class KalmanFilter2D private constructor() {
          */
         fun create(
             processNoise: Float = 0.01f,
-            measurementNoise: Float = 2.0f,
+            measurementNoise: Float = 1.0f,
             predictionTimeMs: Long = 10L
         ): KalmanFilter2D = KalmanFilter2D().apply {
             this.processNoise = processNoise
@@ -90,7 +90,7 @@ class KalmanFilter2D private constructor() {
         x = 0f; y = 0f
         vx = 0f; vy = 0f
         px = 1f; py = 1f
-        pvx = 1f; pvy = 1f
+        pvx = 100f; pvy = 100f
         lastUpdateTime = 0L
         isInitialized = false
     }
@@ -138,8 +138,8 @@ class KalmanFilter2D private constructor() {
         // Kalman gains
         val kx = pxPred / (pxPred + measurementNoise)
         val ky = pyPred / (pyPred + measurementNoise)
-        val kvx = pvxPred / (pvxPred + measurementNoise * 10f)
-        val kvy = pvyPred / (pvyPred + measurementNoise * 10f)
+        val kvx = pvxPred / (pvxPred + measurementNoise * 2f)
+        val kvy = pvyPred / (pvyPred + measurementNoise * 2f)
         
         // State update
         x = xPred + kx * innovX
