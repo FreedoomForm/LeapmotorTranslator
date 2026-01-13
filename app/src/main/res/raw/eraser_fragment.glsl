@@ -93,10 +93,9 @@ float fbm(vec2 p, int octaves) {
 vec4 getSolidFill(vec2 screenPos) {
     if (uIsLightBackground == 1) {
         // LIGHT THEME: Micro-Noise Texture
-        // Adds a subtle "matte paper" grain (amplitude 0.015)
-        // This prevents the "solid sticker" look.
+        // Darkened to 0.85 so user can SEE the square working (was 0.96/White)
         float noise = fbm(screenPos * 0.05 + uTime * 0.02, 2) * 0.015;
-        float base = 0.96 + noise; 
+        float base = 0.85 + noise; 
         return vec4(base, base, base, 1.0);
     } else {
         // DARK THEME: Textured fill

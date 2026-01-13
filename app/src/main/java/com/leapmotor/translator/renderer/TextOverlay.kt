@@ -191,19 +191,22 @@ class TextOverlay(context: Context) : View(context) {
         }
 
         // --- 1. CONFIGURATION ---
-        // Target font size (user wants it big/readable)
-        val targetFontSize = item.fontSize.coerceAtLeast(20f) 
+        // "3 times bigger" -> huge font. Default was 24, now ~72.
+        // Let's autoscaling take care of fitting, but start BIG.
+        val targetFontSize = item.fontSize.coerceAtLeast(60f) 
         textPaint.textSize = targetFontSize
         shadowPaint.textSize = targetFontSize
+        shadowPaint.strokeWidth = 5f // Thicker outline for "chetkiy" (sharpness)
+        shadowPaint.style = Paint.Style.STROKE
         
         val availableWidth = (item.bounds.width() - 4f).coerceAtLeast(1f)
         val textWidth = textPaint.measureText(item.text)
         
         // --- 2. POSITIONING ---
-        // "up russian text to 20 pixels more" -> Previous was -10f, now -30f
+        // "up russian text to 20 pixels more" -> Previous -30f, now -50f
         val x = item.bounds.left + 2f
         val centerY = item.bounds.centerY()
-        val yOffset = -30f 
+        val yOffset = -50f 
         
         // --- 3. RENDERING STRATEGY ---
         if (textWidth <= availableWidth) {
@@ -211,11 +214,12 @@ class TextOverlay(context: Context) : View(context) {
             val fontMetrics = textPaint.fontMetrics
             val lineY = centerY - (fontMetrics.descent + fontMetrics.ascent) / 2f + yOffset
             
+            // Draw Outline (High contrast)
             canvas.drawText(item.text, x, lineY, shadowPaint)
+            // Draw Fill
             canvas.drawText(item.text, x, lineY, textPaint)
         } else {
-            // Case B: Too long -> Multi-line Wrap (to keep text big)
-            // Use StaticLayout to wrap text
+            // Case B: Too long -> Multi-line Wrap
             val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                 android.text.StaticLayout.Builder.obtain(item.text, 0, item.text.length, textPaint, availableWidth.toInt())
                     .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
@@ -238,35 +242,21 @@ class TextOverlay(context: Context) : View(context) {
             // Draw Layout centered vertically at the offset position
             canvas.save()
             val layoutHeight = builder.height.toFloat()
-            // Center the *block* of text at (centerY + yOffset)
             val layoutTop = centerY + yOffset - (layoutHeight / 2f)
             
             canvas.translate(x, layoutTop)
             
-            // Draw shadow (hack: draw same layout with shadow paint, but StaticLayout uses Paint from construction)
-            // StaticLayout is tied to the Paint passed in constructor.
-            // To draw shadow efficiently for Layout, we can't easily swap paint.
-            // Alternative: Draw main text with shadow layer?
-            // Or construct a second layout for shadow? Second layout is expensive.
-            // Let's use setShadowLayer on the main paint temporarily?
-            // Or just draw the text twice by swapping paint color/style? 
-            // StaticLayout uses the TextPaint object reference. We can modify the TextPaint state.
-            
-            // Draw Shadow
+            // Draw Outline
             val originalColor = textPaint.color
-            val originalStyle = textPaint.style
-            val originalStroke = textPaint.strokeWidth
-            
-            // Apply Shadow Style to textPaint
-            textPaint.color = shadowPaint.color
             textPaint.style = Paint.Style.STROKE
-            textPaint.strokeWidth = shadowPaint.strokeWidth
+            textPaint.strokeWidth = 5f
+            textPaint.color = Color.BLACK
             builder.draw(canvas)
             
-            // Restore and Draw Text
-            textPaint.color = originalColor
+            // Draw Fill
             textPaint.style = Paint.Style.FILL
             textPaint.strokeWidth = 0f
+            textPaint.color = originalColor
             builder.draw(canvas)
             
             canvas.restore()
