@@ -193,7 +193,8 @@ class TextOverlay(context: Context) : View(context) {
         // --- 1. CONFIGURATION ---
         // "3 times bigger" -> huge font. Default was 24, now ~72.
         // Let's autoscaling take care of fitting, but start BIG.
-        val targetFontSize = item.fontSize.coerceAtLeast(60f) 
+        // "1.5x" request -> Respect limits
+        val targetFontSize = item.fontSize.coerceAtLeast(20f) 
         textPaint.textSize = targetFontSize
         shadowPaint.textSize = targetFontSize
         shadowPaint.strokeWidth = 5f // Thicker outline for "chetkiy" (sharpness)
@@ -203,10 +204,10 @@ class TextOverlay(context: Context) : View(context) {
         val textWidth = textPaint.measureText(item.text)
         
         // --- 2. POSITIONING ---
-        // "up russian text to 20 pixels more" -> Previous -30f, now -50f
+        // "20 pixels higher" -> Previous -50f, now -70f
         val x = item.bounds.left + 2f
         val centerY = item.bounds.centerY()
-        val yOffset = -50f 
+        val yOffset = -70f 
         
         // --- 3. RENDERING STRATEGY ---
         if (textWidth <= availableWidth) {

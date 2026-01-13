@@ -135,8 +135,8 @@ float getBoxCoverage(vec2 screenPos) {
             float dy = min(screenPos.y - top, bottom - screenPos.y);
             float distToEdge = min(dx, dy);
             
-            // Soft edge transition (Much softer now: 6.0px)
-            float edgeSoftness = smoothstep(0.0, 6.0, distToEdge);
+            // Soft edge transition (Sharpened to 1.0px to avoid transparent look)
+            float edgeSoftness = smoothstep(0.0, 1.0, distToEdge);
             maxCoverage = max(maxCoverage, edgeSoftness);
         }
     }

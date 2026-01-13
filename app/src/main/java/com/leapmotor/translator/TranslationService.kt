@@ -388,8 +388,8 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun calculateFontSize(text: String, bounds: RectF): Float {
-        // "3 times bigger" strategy
-        val heightBasedSize = bounds.height() * 2.0f // Start double height
+        // "Simply text 1.5" -> 1.5x height multiplier
+        val heightBasedSize = bounds.height() * 1.5f 
         val avgCharWidth = 0.6f
         val requiredWidth = text.length * heightBasedSize * avgCharWidth
         
@@ -399,8 +399,8 @@ class TranslationService : AccessibilityService() {
             heightBasedSize
         }
         
-        // Massive range, default big
-        return widthBasedSize.coerceIn(30f, 150f)
+        // Reasonable range for 1.5x
+        return widthBasedSize.coerceIn(20f, 100f)
     }
     
     // ========================================================================
