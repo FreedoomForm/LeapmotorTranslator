@@ -3,625 +3,501 @@ package com.leapmotor.translator
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
-import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
-import android.os.SystemClock
-import android.util.DisplayMetrics
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.FrameLayout
-import com.leapmotor.translator.filter.KalmanFilter
-import com.leapmotor.translator.filter.KalmanFilterPool
-import com.leapmotor.translator.renderer.EraserSurfaceView
+import com.leapmotor.translator.core.Logger
+import com.leapmotor.translator.core.containsChinese
+import com.leapmotor.translator.domain.repository.TranslationRepository
+import com.leapmotor.translator.filter.KalmanFilter2D
+import com.leapmotor.translator.filter.KalmanFilter2DPool
+import com.leapmotor.translator.renderer.OverlayRenderer
 import com.leapmotor.translator.renderer.TextOverlay
-import com.leapmotor.translator.translation.CommonTranslations
-import com.leapmotor.translator.translation.TranslationManager
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
+import javax.inject.Inject
 
 /**
- * Main Accessibility Service for Leapmotor C11 Translation Overlay.
+ * AccessibilityService that translates Chinese UI elements to Russian.
  * 
- * Captures Chinese UI elements, translates to Russian, and renders
- * an overlay that masks original text and displays translations.
+ * Uses Hilt for dependency injection and coroutines for async operations.
  * 
- * Architecture:
- * 1. Input: AccessibilityService captures UI tree
- * 2. Processing: ML Kit translation + Kalman filter for scroll prediction
- * 3. Visual: OpenGL shader eraser + Canvas text overlay
- * 
- * Optimized for Snapdragon 8155 / Android 9 Automotive.
+ * Responsibilities:
+ * - Capture accessibility events
+ * - Extract text nodes from UI hierarchy
+ * - Translate text using ML Kit
+ * - Render overlay with translations
+ * - Predict scroll position with Kalman filter
  */
+@AndroidEntryPoint
 class TranslationService : AccessibilityService() {
-
+    
     companion object {
         private const val TAG = "TranslationService"
         
-        // Processing settings
-        private const val UPDATE_DEBOUNCE_MS = 50L
-        private const val MAX_NODES_PER_FRAME = 128
-        
-        // Singleton reference for external access
+        // Service instance for external access
         @Volatile
         var instance: TranslationService? = null
             private set
-            
-        // Debug History Log
-        data class LogItem(
-            val time: Long,
-            val original: String,
-            val translated: String?,
-            val bounds: RectF
-        )
         
-        val historyLog = java.util.concurrent.CopyOnWriteArrayList<LogItem>()
-        
-        fun addToLog(original: String, translated: String?, bounds: RectF) {
-            if (historyLog.size > 50) {
-                historyLog.removeAt(0)
-            }
-            historyLog.add(LogItem(System.currentTimeMillis(), original, translated, bounds))
-        }
+        // Configuration
+        private const val UPDATE_DEBOUNCE_MS = 50L
+        private const val MAX_NODES_PER_FRAME = 128
+        private const val ELEMENT_TIMEOUT_MS = 500L
     }
     
-    // Window manager for overlays
-    private lateinit var windowManager: WindowManager
-
-    // Dynamic screen metrics
-    private var screenWidth = 1080
-    private var screenHeight = 2340 // Default to a reasonable mobile size, updated in onCreate
-
-    // Overlay views
-    private var overlayContainer: FrameLayout? = null
-    private var eraserView: EraserSurfaceView? = null
+    // ========================================================================
+    // INJECTED DEPENDENCIES
+    // ========================================================================
+    
+    @Inject
+    lateinit var translationRepository: TranslationRepository
+    
+    // ========================================================================
+    // SERVICE STATE
+    // ========================================================================
+    
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    
+    private var windowManager: WindowManager? = null
+    private var overlayView: View? = null
+    private var eraserView: OverlayRenderer.EraserSurfaceView? = null
     private var textOverlay: TextOverlay? = null
     
-    // Translation engine
-    private val translationManager = TranslationManager.getInstance()
+    private var debugMode = false
+    private var isOverlayShowing = false
     
-    // Kalman filters for motion prediction (indexed by node ID hashcode)
-    private val kalmanFilters = ConcurrentHashMap<Int, KalmanFilter>()
-    private val filterPool = KalmanFilterPool(64)
+    // ========================================================================
+    // TRACKING STATE
+    // ========================================================================
     
-    // Coroutine scope for async processing
-    private val serviceScope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Default + CoroutineName("TranslationService")
-    )
+    private val activeElements = ConcurrentHashMap<String, TrackedElement>()
+    private val kalmanFilters = ConcurrentHashMap<String, KalmanFilter2D>()
     
-    // Main thread handler for UI updates
-    private val mainHandler = Handler(Looper.getMainLooper())
-    
-    // Debouncing
     private var lastUpdateTime = 0L
-    private var pendingUpdate: Job? = null
+    private var updateJob: Job? = null
     
-    // Tracked text elements
-    private val trackedElements = ConcurrentHashMap<String, TrackedElement>()
+    // ========================================================================
+    // DATA CLASSES
+    // ========================================================================
     
-    // State
-    private var isOverlayActive = false
-    private var isInitialized = false
-    
-    /**
-     * Data class for tracking UI text elements.
-     */
     data class TrackedElement(
         val id: String,
         val originalText: String,
-        var translatedText: String?,
-        val bounds: RectF,               // Original bounding box from accessibility
-        val originalBounds: RectF,       // Copy of original bounds (unchanged by prediction)
+        var translatedText: String,
+        var bounds: RectF,
         var predictedY: Float,
         var lastSeenTime: Long,
-        var kalmanFilter: KalmanFilter?,
-        val originalWidth: Float,        // Width of the Chinese text box
-        val originalHeight: Float        // Height of the Chinese text box (for font sizing)
+        var fontSize: Float = 24f
     )
+    
+    // ========================================================================
+    // LIFECYCLE
+    // ========================================================================
     
     override fun onCreate() {
         super.onCreate()
-        instance = this
-        Log.d(TAG, "TranslationService created")
+        Logger.i(TAG, "TranslationService onCreate")
     }
     
     override fun onServiceConnected() {
         super.onServiceConnected()
-        Log.d(TAG, "TranslationService connected")
+        instance = this
         
-        // Configure service info
+        Logger.i(TAG, "TranslationService connected")
+        
+        // Configure accessibility service
+        configureAccessibilityService()
+        
+        // Initialize overlay
+        initializeOverlay()
+        
+        // Initialize translation if needed
+        serviceScope.launch {
+            if (!translationRepository.isReady) {
+                translationRepository.initialize()
+            }
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        instance = null
+        
+        // Cleanup
+        serviceScope.cancel()
+        removeOverlay()
+        releaseFilters()
+        
+        Logger.i(TAG, "TranslationService destroyed")
+    }
+    
+    override fun onInterrupt() {
+        Logger.w(TAG, "TranslationService interrupted")
+    }
+    
+    // ========================================================================
+    // CONFIGURATION
+    // ========================================================================
+    
+    private fun configureAccessibilityService() {
         val info = AccessibilityServiceInfo().apply {
             eventTypes = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
-                    AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                    AccessibilityEvent.TYPE_VIEW_SCROLLED
+                        AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                        AccessibilityEvent.TYPE_VIEW_SCROLLED
+            
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+            
             flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                    AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+                   AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                   AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+            
             notificationTimeout = 50
         }
+        
         serviceInfo = info
-        
-        // Initialize components
-        initializeService()
     }
     
-    private fun initializeService() {
-        if (isInitialized) return
-        
-        try {
-            windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            
-            // Get dynamic screen metrics
-            val metrics = DisplayMetrics()
-            windowManager.defaultDisplay.getRealMetrics(metrics)
-            screenWidth = metrics.widthPixels
-            screenHeight = metrics.heightPixels
-            Log.d(TAG, "Screen metrics initialized: ${screenWidth}x${screenHeight}")
-
-            // Initialize overlay immediately so user sees feedback
-            createOverlay()
-            textOverlay?.setStatus(TextOverlay.Status.INITIALIZING)
-
-            // Initialize dictionary persistence
-            translationManager.init(this)
-
-            // initialize translation engine with safe try-catch wrapper
-            serviceScope.launch {
-                try {
-                    translationManager.preloadTranslations(CommonTranslations.LEAPMOTOR_UI)
-                    val ready = translationManager.initialize()
-                    
-                    withContext(Dispatchers.Main) {
-                        if (ready) {
-                            Log.d(TAG, "Translation model ready")
-                            textOverlay?.setStatus(TextOverlay.Status.ACTIVE)
-                        } else {
-                            Log.e(TAG, "Failed to initialize translation model")
-                            textOverlay?.setStatus(TextOverlay.Status.ERROR)
-                            android.widget.Toast.makeText(this@TranslationService, "Ошибка инициализации модели перевода", android.widget.Toast.LENGTH_LONG).show()
-                        }
-                    }
-                } catch (e: Exception) {
-                     Log.e(TAG, "Error in translation initialization: ${e.message}")
-                     e.printStackTrace()
-                     withContext(Dispatchers.Main) {
-                         textOverlay?.setStatus(TextOverlay.Status.ERROR)
-                         android.widget.Toast.makeText(this@TranslationService, "Ошибка перевода: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                     }
-                }
-            }
-            
-            isInitialized = true
-            Log.d(TAG, "TranslationService initialized")
-            
-            mainHandler.post {
-                android.widget.Toast.makeText(this, "Сервис перевода запущен!", android.widget.Toast.LENGTH_LONG).show()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Critical error initializing service: ${e.message}")
-            e.printStackTrace()
-            mainHandler.post {
-                android.widget.Toast.makeText(this, "Критическая ошибка сервиса: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-    
-    /**
-     * Set debug mode to show/hide visualization helpers.
-     */
-    fun setDebugMode(enabled: Boolean) {
-        textOverlay?.debugMode = enabled
-        textOverlay?.invalidate()
-        if (enabled) {
-             mainHandler.post {
-                android.widget.Toast.makeText(this, "Debug Mode Enabled (Red Border)", android.widget.Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    /**
-     * Create the overlay window with OpenGL eraser and text layers.
-     */
-    private fun createOverlay() {
-        if (overlayContainer != null) return
-        
-        // Container layout
-        overlayContainer = FrameLayout(this).apply {
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        }
-        
-        // OpenGL eraser surface
-        eraserView = EraserSurfaceView(this)
-        overlayContainer?.addView(eraserView, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-        
-        // Canvas text overlay
-        textOverlay = TextOverlay(this)
-        overlayContainer?.addView(textOverlay, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-        
-        // Window parameters
-        val params = WindowManager.LayoutParams().apply {
-            type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            } else {
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY
-            }
-            
-            format = PixelFormat.TRANSLUCENT
-            
-            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-            
-            gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = 0
-            width = WindowManager.LayoutParams.MATCH_PARENT
-            height = WindowManager.LayoutParams.MATCH_PARENT
-        }
-        
-        try {
-            windowManager.addView(overlayContainer, params)
-            isOverlayActive = true
-            Log.d(TAG, "Overlay created successfully")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create overlay: ${e.message}")
-            e.printStackTrace()
-            mainHandler.post {
-                android.widget.Toast.makeText(this, "Ошибка создания наложения: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-    
-    /**
-     * Remove the overlay window.
-     */
-    private fun removeOverlay() {
-        if (!isOverlayActive) return
-        
-        try {
-            eraserView?.renderer?.release()
-            overlayContainer?.let { windowManager.removeView(it) }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error removing overlay: ${e.message}")
-        }
-        
-        overlayContainer = null
-        eraserView = null
-        textOverlay = null
-        isOverlayActive = false
-    }
+    // ========================================================================
+    // ACCESSIBILITY EVENTS
+    // ========================================================================
     
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || !isOverlayActive) return
+        if (event == null) return
         
-        val now = SystemClock.elapsedRealtime()
-        
-        // Debounce rapid updates
-        if (now - lastUpdateTime < UPDATE_DEBOUNCE_MS) {
-            // Schedule delayed update instead
-            pendingUpdate?.cancel()
-            pendingUpdate = serviceScope.launch {
-                delay(UPDATE_DEBOUNCE_MS)
-                withContext(Dispatchers.Main) {
-                    processEvent(event)
-                }
-            }
-            return
-        }
-        
+        // Debounce updates
+        val now = System.currentTimeMillis()
+        if (now - lastUpdateTime < UPDATE_DEBOUNCE_MS) return
         lastUpdateTime = now
-        processEvent(event)
+        
+        // Cancel previous update and start new one
+        updateJob?.cancel()
+        updateJob = serviceScope.launch {
+            try {
+                processEvent(event, now)
+            } catch (e: Exception) {
+                Logger.e(TAG, "Error processing event", e)
+            }
+        }
     }
     
-    /**
-     * Process accessibility event and update overlay.
-     */
-    private fun processEvent(event: AccessibilityEvent) {
+    private suspend fun processEvent(event: AccessibilityEvent, currentTime: Long) {
         val rootNode = rootInActiveWindow ?: return
         
-        serviceScope.launch {
-            try {
-                // Extract text nodes from UI tree
-                val textNodes = mutableListOf<TextNode>()
-                extractTextNodes(rootNode, textNodes, 0)
+        try {
+            // Extract text nodes
+            val textNodes = mutableListOf<TextNodeInfo>()
+            extractTextNodes(rootNode, textNodes, 0)
+            
+            // Limit nodes per frame
+            val limitedNodes = textNodes.take(MAX_NODES_PER_FRAME)
+            
+            // Mark current elements as seen
+            val seenIds = mutableSetOf<String>()
+            
+            // Process each text node
+            for (nodeInfo in limitedNodes) {
+                val elementId = createElementId(nodeInfo)
+                seenIds.add(elementId)
                 
-                // Process and translate
-                val elements = processTextNodes(textNodes)
+                // Check if element exists
+                val existing = activeElements[elementId]
                 
-                // Update overlay on main thread
-                withContext(Dispatchers.Main) {
-                    updateOverlay(elements)
+                if (existing != null) {
+                    // Update existing element
+                    updateExistingElement(existing, nodeInfo, currentTime)
+                } else {
+                    // Create new element
+                    createNewElement(elementId, nodeInfo, currentTime)
                 }
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing event: ${e.message}")
-            } finally {
-                rootNode.recycle()
             }
+            
+            // Remove expired elements
+            removeExpiredElements(currentTime, seenIds)
+            
+            // Update overlay
+            withContext(Dispatchers.Main) {
+                updateOverlay()
+            }
+            
+        } finally {
+            rootNode.recycle()
         }
     }
     
-    /**
-     * Extracted text node data class.
-     */
-    data class TextNode(
-        val id: String,
+    // ========================================================================
+    // TEXT NODE EXTRACTION
+    // ========================================================================
+    
+    private data class TextNodeInfo(
         val text: String,
-        val bounds: Rect,
+        val bounds: RectF,
+        val viewId: String?,
         val depth: Int
     )
     
-    /**
-     * Recursively extract text nodes from accessibility tree.
-     */
     private fun extractTextNodes(
         node: AccessibilityNodeInfo,
-        results: MutableList<TextNode>,
+        result: MutableList<TextNodeInfo>,
         depth: Int
     ) {
-        if (results.size >= MAX_NODES_PER_FRAME) return
-        
-        // Extract text if present
+        // Get text content
         val text = node.text?.toString()?.trim()
-        if (!text.isNullOrEmpty() && containsChinese(text)) {
-            val bounds = Rect()
-            node.getBoundsInScreen(bounds)
+        
+        if (!text.isNullOrEmpty() && text.containsChinese()) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            val bounds = RectF(rect)
             
-            // Skip off-screen or too small elements
-            if (bounds.width() > 10 && bounds.height() > 10 &&
-                bounds.left >= 0 && bounds.top >= 0 &&
-                bounds.right <= screenWidth &&
-                bounds.bottom <= screenHeight
-            ) {
-                // Generate stable ID for tracking (independent of X/Y position to support Kalman filtering)
-                // We use text + dimensions + viewId. This allows tracking the same element as it scrolls.
-                val idStr = "${node.viewIdResourceName ?: "no_id"}|${text}|${bounds.width()}x${bounds.height()}"
-                results.add(TextNode(idStr, text, bounds, depth))
+            if (isValidBounds(bounds)) {
+                result.add(TextNodeInfo(
+                    text = text,
+                    bounds = bounds,
+                    viewId = node.viewIdResourceName,
+                    depth = depth
+                ))
             }
         }
         
-        // Recursively process children
+        // Process children
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             try {
-                extractTextNodes(child, results, depth + 1)
+                extractTextNodes(child, result, depth + 1)
             } finally {
                 child.recycle()
             }
         }
     }
     
-    /**
-     * Check if text contains Chinese characters.
-     */
-    private fun containsChinese(text: String): Boolean {
-        return text.any { char ->
-            val code = char.code
-            // CJK Unified Ideographs range
-            code in 0x4E00..0x9FFF ||
-            // CJK Extension A
-            code in 0x3400..0x4DBF ||
-            // Common CJK punctuation
-            code in 0x3000..0x303F
-        }
+    private fun isValidBounds(bounds: RectF): Boolean {
+        return bounds.width() > 10 &&
+               bounds.height() > 10 &&
+               bounds.left >= 0 &&
+               bounds.top >= 0 &&
+               bounds.right <= 4096 &&
+               bounds.bottom <= 4096
     }
     
-    /**
-     * Process text nodes: translate and apply Kalman prediction.
-     */
-    private suspend fun processTextNodes(nodes: List<TextNode>): List<TrackedElement> {
-        val currentTime = SystemClock.elapsedRealtime()
-        val elements = mutableListOf<TrackedElement>()
+    // ========================================================================
+    // ELEMENT MANAGEMENT
+    // ========================================================================
+    
+    private fun createElementId(nodeInfo: TextNodeInfo): String {
+        return "${nodeInfo.viewId ?: "no_id"}|${nodeInfo.text}|${nodeInfo.bounds.width().toInt()}x${nodeInfo.bounds.height().toInt()}"
+    }
+    
+    private suspend fun createNewElement(
+        elementId: String,
+        nodeInfo: TextNodeInfo,
+        currentTime: Long
+    ) {
+        // Translate text
+        val translation = translationRepository.translate(nodeInfo.text)
+            .getOrDefault(nodeInfo.text)
         
-        for (node in nodes) {
-            // Get or create tracked element
-            var element = trackedElements[node.id]
-            
-            if (element == null) {
-                // New element - translate and create tracker
-                val translation = translationManager.translate(node.text)
+        // Calculate font size
+        val fontSize = calculateFontSize(translation, nodeInfo.bounds)
+        
+        // Create element
+        val element = TrackedElement(
+            id = elementId,
+            originalText = nodeInfo.text,
+            translatedText = translation,
+            bounds = nodeInfo.bounds,
+            predictedY = nodeInfo.bounds.top,
+            lastSeenTime = currentTime,
+            fontSize = fontSize
+        )
+        
+        activeElements[elementId] = element
+    }
+    
+    private fun updateExistingElement(
+        element: TrackedElement,
+        nodeInfo: TextNodeInfo,
+        currentTime: Long
+    ) {
+        // Get or create Kalman filter
+        val filter = kalmanFilters.getOrPut(element.id) {
+            KalmanFilter2DPool.acquire()
+        }
+        
+        // Update Kalman filter and get prediction
+        val (_, predictedY) = filter.update(
+            nodeInfo.bounds.left,
+            nodeInfo.bounds.top,
+            currentTime
+        )
+        
+        // Update element
+        element.bounds = nodeInfo.bounds
+        element.predictedY = predictedY
+        element.lastSeenTime = currentTime
+    }
+    
+    private fun removeExpiredElements(currentTime: Long, seenIds: Set<String>) {
+        val iterator = activeElements.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (!seenIds.contains(entry.key) && 
+                currentTime - entry.value.lastSeenTime > ELEMENT_TIMEOUT_MS) {
                 
-                // Log it
-                val nodeBounds = RectF(node.bounds)
-                addToLog(node.text, translation, nodeBounds)
-                
-                val filter = filterPool.acquire()
-                
-                element = TrackedElement(
-                    id = node.id,
-                    originalText = node.text,
-                    translatedText = translation,
-                    bounds = RectF(nodeBounds),
-                    originalBounds = RectF(nodeBounds),  // Keep original for reference
-                    predictedY = node.bounds.top.toFloat(),
-                    lastSeenTime = currentTime,
-                    kalmanFilter = filter,
-                    originalWidth = nodeBounds.width(),
-                    originalHeight = nodeBounds.height()
-                )
-                
-                trackedElements[node.id] = element
-                
-            } else {
-                // Existing element - update with Kalman prediction
-                element.lastSeenTime = currentTime
-                element.bounds.set(node.bounds.left.toFloat(), node.bounds.top.toFloat(),
-                    node.bounds.right.toFloat(), node.bounds.bottom.toFloat())
-                
-                // Apply Kalman filter for Y prediction
-                element.kalmanFilter?.let { filter ->
-                    element.predictedY = filter.update(
-                        node.bounds.top.toFloat(),
-                        currentTime
-                    )
+                // Release Kalman filter
+                kalmanFilters.remove(entry.key)?.let { filter ->
+                    KalmanFilter2DPool.release(filter)
                 }
                 
-                // Re-translate if text changed
-                if (element.originalText != node.text) {
-                    element.translatedText = translationManager.translate(node.text)
-                }
-                
-                // Recovery: If filter was lost (e.g. pool exhausted previously), try to acquire one again
-                if (element.kalmanFilter == null) {
-                    element.kalmanFilter = filterPool.acquire()
-                    // If we got one, sync it
-                    element.kalmanFilter?.update(node.bounds.top.toFloat(), currentTime)
-                }
+                iterator.remove()
             }
-            
-            elements.add(element)
         }
-        
-        // Clean up stale elements (not seen for 500ms)
-        val staleThreshold = currentTime - 500
-        val staleKeys = trackedElements.entries
-            .filter { it.value.lastSeenTime < staleThreshold }
-            .map { it.key }
-        
-        for (key in staleKeys) {
-            trackedElements[key]?.kalmanFilter?.let { filterPool.release(it) }
-            trackedElements.remove(key)
-        }
-        
-        return elements
     }
     
-    /**
-     * Update overlay with translated elements.
-     * 
-     * Key improvements:
-     * 1. Eraser boxes match EXACT Chinese text bounds (with small padding)
-     * 2. Translation text uses same position/size as original Chinese
-     * 3. Kalman prediction keeps boxes stable during scroll
-     */
-    private fun updateOverlay(elements: List<TrackedElement>) {
-        if (!isOverlayActive) return
-        
-        // Update eraser shader bounding boxes
-        // These cover the ORIGINAL Chinese text areas
-        val eraserBoxes = elements.map { element ->
-            // Use Kalman-predicted Y for smoother scroll tracking
-            val predictedBounds = RectF(element.originalBounds)
-            predictedBounds.offsetTo(predictedBounds.left, element.predictedY)
-            predictedBounds
+    private fun releaseFilters() {
+        kalmanFilters.values.forEach { filter ->
+            KalmanFilter2DPool.release(filter)
         }
-        eraserView?.updateBoxes(eraserBoxes)
+        kalmanFilters.clear()
+        activeElements.clear()
+    }
+    
+    // ========================================================================
+    // FONT SIZE CALCULATION
+    // ========================================================================
+    
+    private fun calculateFontSize(text: String, bounds: RectF): Float {
+        val heightBasedSize = bounds.height() * 0.7f
+        val avgCharWidth = 0.55f
+        val requiredWidth = text.length * heightBasedSize * avgCharWidth
+        
+        val widthBasedSize = if (requiredWidth > bounds.width() && bounds.width() > 0) {
+            heightBasedSize * (bounds.width() / requiredWidth)
+        } else {
+            heightBasedSize
+        }
+        
+        return widthBasedSize.coerceIn(10f, 48f)
+    }
+    
+    // ========================================================================
+    // OVERLAY MANAGEMENT
+    // ========================================================================
+    
+    private fun initializeOverlay() {
+        if (isOverlayShowing) return
+        
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        
+        // Create eraser view (OpenGL)
+        eraserView = OverlayRenderer.EraserSurfaceView(this)
+        
+        // Create text overlay
+        textOverlay = TextOverlay(this)
+        
+        // Overlay layout params
+        val layoutParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+        }
+        
+        try {
+            windowManager?.addView(eraserView, layoutParams)
+            windowManager?.addView(textOverlay, layoutParams)
+            isOverlayShowing = true
+            
+            textOverlay?.setStatus(TextOverlay.Status.ACTIVE)
+            
+            Logger.i(TAG, "Overlay initialized")
+        } catch (e: Exception) {
+            Logger.e(TAG, "Failed to add overlay", e)
+        }
+    }
+    
+    private fun removeOverlay() {
+        try {
+            eraserView?.let { windowManager?.removeView(it) }
+            textOverlay?.let { windowManager?.removeView(it) }
+        } catch (e: Exception) {
+            Logger.e(TAG, "Error removing overlay", e)
+        }
+        
+        eraserView = null
+        textOverlay = null
+        isOverlayShowing = false
+    }
+    
+    private fun updateOverlay() {
+        if (!isOverlayShowing) return
+        
+        val elements = activeElements.values.toList()
+        
+        // Update eraser
+        val boundingBoxes = elements.map { element ->
+            RectF(
+                element.bounds.left,
+                element.predictedY,
+                element.bounds.right,
+                element.predictedY + element.bounds.height()
+            )
+        }
+        eraserView?.getRenderer()?.updateBoundingBoxes(boundingBoxes)
+        eraserView?.requestRender()
         
         // Update text overlay
-        val textItems = elements.mapNotNull { element ->
-            val translation = element.translatedText ?: return@mapNotNull null
-            
-            // Use predicted Y position, but keep original X and dimensions
-            val predictedBounds = RectF(
-                element.originalBounds.left,
-                element.predictedY,
-                element.originalBounds.right,
-                element.predictedY + element.originalHeight
-            )
-            
-            // Estimate font size based on ORIGINAL Chinese text box height
-            // This ensures Russian translation matches the visual size of Chinese
-            val fontSize = calculateDynamicFontSize(
-                translation,
-                element.originalWidth,
-                element.originalHeight
-            )
-            
+        val textItems = elements.map { element ->
             TextOverlay.TranslatedText(
-                text = translation,
-                bounds = predictedBounds,
+                text = element.translatedText,
+                bounds = RectF(
+                    element.bounds.left,
+                    element.predictedY,
+                    element.bounds.right,
+                    element.predictedY + element.bounds.height()
+                ),
                 originalText = element.originalText,
-                fontSize = fontSize
+                fontSize = element.fontSize
             )
         }
         textOverlay?.updateTextItems(textItems)
     }
     
-    /**
-     * Calculate dynamic font size that will fit the translated text
-     * within the Chinese text box dimensions.
-     * 
-     * @param text The Russian translated text
-     * @param boxWidth Width of the original Chinese text box
-     * @param boxHeight Height of the original Chinese text box
-     * @return Optimal font size in pixels
-     */
-    private fun calculateDynamicFontSize(text: String, boxWidth: Float, boxHeight: Float): Float {
-        // Start with height-based estimate (70% of box height is good baseline)
-        val heightBasedSize = boxHeight * 0.7f
-        
-        // Russian text is typically wider than Chinese for same character count
-        // Estimate required width: Russian uses ~0.6 * fontSize per character average
-        val avgCharWidth = 0.55f  // Approximate ratio for Cyrillic bold font
-        val requiredWidth = text.length * heightBasedSize * avgCharWidth
-        
-        // If text would overflow width, scale down proportionally
-        val widthBasedSize = if (requiredWidth > boxWidth) {
-            heightBasedSize * (boxWidth / requiredWidth)
-        } else {
-            heightBasedSize
+    // ========================================================================
+    // PUBLIC API
+    // ========================================================================
+    
+    fun setDebugMode(enabled: Boolean) {
+        debugMode = enabled
+        textOverlay?.debugMode = enabled
+        Logger.i(TAG, "Debug mode: $enabled")
+    }
+    
+    fun getActiveElementCount(): Int = activeElements.size
+    
+    fun clearTranslations() {
+        activeElements.clear()
+        releaseFilters()
+        serviceScope.launch(Dispatchers.Main) {
+            textOverlay?.clear()
+            eraserView?.getRenderer()?.updateBoundingBoxes(emptyList())
+            eraserView?.requestRender()
         }
-        
-        // Clamp to reasonable range
-        return widthBasedSize.coerceIn(10f, 48f)
-    }
-    
-    override fun onInterrupt() {
-        Log.d(TAG, "TranslationService interrupted")
-    }
-    
-    override fun onDestroy() {
-        super.onDestroy()
-        
-        // Cancel all coroutines
-        serviceScope.cancel()
-        pendingUpdate?.cancel()
-        
-        // Release resources
-        removeOverlay()
-        translationManager.release()
-        filterPool.releaseAll()
-        trackedElements.clear()
-        
-        instance = null
-        Log.d(TAG, "TranslationService destroyed")
-    }
-    
-    /**
-     * Toggle overlay visibility.
-     */
-    fun toggleOverlay() {
-        if (isOverlayActive) {
-            overlayContainer?.visibility = View.GONE
-        } else {
-            overlayContainer?.visibility = View.VISIBLE
-        }
-    }
-    
-
-    
-    /**
-     * Get translation cache statistics.
-     */
-    fun getCacheStats(): TranslationManager.CacheStats {
-        return translationManager.getCacheStats()
     }
 }

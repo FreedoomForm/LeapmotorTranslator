@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- OpenGL ES 3.0 feature requirement for Adreno 640 -->
     <uses-feature
@@ -33,22 +34,26 @@
             </intent-filter>
         </activity>
 
+        <!-- Legacy Dictionary Activity -->
         <activity
             android:name=".DictionaryActivity"
             android:exported="false"
             android:label="Dictionary"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.LeapmotorTranslator">
-        </activity>
+            android:theme="@style/Theme.LeapmotorTranslator" />
+
+        <!-- New Dictionary Activity (with ViewModel) -->
+        <activity
+            android:name=".ui.dictionary.DictionaryActivity"
+            android:exported="false"
+            android:label="Dictionary V2"
+            android:theme="@style/Theme.LeapmotorTranslator" />
 
         <!-- Debug History Activity -->
         <activity
             android:name=".RecognizedWordsActivity"
             android:exported="false"
             android:label="Debug History"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.LeapmotorTranslator">
-        </activity>
+            android:theme="@style/Theme.LeapmotorTranslator" />
 
         <!-- Translation Overlay Accessibility Service -->
         <service

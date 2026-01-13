@@ -1,52 +1,177 @@
-name: Build APK
+name: Android CI/CD
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:  # Allow manual trigger
+    branches: [ main ]
+  release:
+    types: [ created ]
 
+env:
+  JAVA_VERSION: '17'
+  ANDROID_COMPILE_SDK: '34'
+  
 jobs:
-  build:
+  # ============================================================================
+  # LINT & ANALYSIS
+  # ============================================================================
+  lint:
+    name: Lint & Static Analysis
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: '8.4'
-
-    - name: Build Debug APK
-      run: gradle assembleDebug
-
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: LeapmotorTranslator-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 30
-
-    - name: Build Release APK (unsigned)
-      run: gradle assembleRelease
-      continue-on-error: true
-
-    - name: Upload Release APK
-      uses: actions/upload-artifact@v4
-      if: success()
-      with:
-        name: LeapmotorTranslator-release
-        path: app/build/outputs/apk/release/app-release-unsigned.apk
-        retention-days: 30
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'gradle'
+          
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        
+      - name: Run Lint
+        run: ./gradlew lint
+        
+      - name: Upload Lint Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-results
+          path: app/build/reports/lint-results-*.html
+          
+  # ============================================================================
+  # UNIT TESTS
+  # ============================================================================
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'gradle'
+          
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest
+        
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: app/build/reports/tests/
+          
+      - name: Upload Test Report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-report
+          path: app/build/test-results/
+          
+  # ============================================================================
+  # BUILD DEBUG APK
+  # ============================================================================
+  build-debug:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'gradle'
+          
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+        
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          
+  # ============================================================================
+  # BUILD RELEASE APK
+  # ============================================================================
+  build-release:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    if: github.event_name == 'release' || github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'gradle'
+          
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+        
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          
+  # ============================================================================
+  # UPLOAD TO RELEASE
+  # ============================================================================
+  upload-release:
+    name: Upload to Release
+    runs-on: ubuntu-latest
+    needs: [build-release]
+    if: github.event_name == 'release'
+    
+    steps:
+      - name: Download Release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: app-release
+          
+      - name: Get Release Info
+        id: release
+        uses: bruceadams/get-release@v1.3.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.release.outputs.upload_url }}
+          asset_path: ./app-release-unsigned.apk
+          asset_name: LeapmotorTranslator-${{ github.event.release.tag_name }}.apk
+          asset_content_type: application/vnd.android.package-archive

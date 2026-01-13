@@ -4,444 +4,379 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.Toast
-import android.text.TextUtils
-import android.content.ComponentName
-import androidx.appcompat.app.AppCompatActivity
-import android.view.View
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
-import android.graphics.Color
 import android.view.Gravity
-import android.widget.ScrollView
+import android.view.ViewGroup
+import android.widget.*
+import androidx.activity.viewModels
+import com.leapmotor.translator.core.UiState
+import com.leapmotor.translator.ui.base.BaseActivity
+import com.leapmotor.translator.ui.base.collectLatestWithLifecycle
+import com.leapmotor.translator.ui.dictionary.DictionaryActivity
+import com.leapmotor.translator.ui.main.MainViewModel
+import com.leapmotor.translator.util.PermissionUtils
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
- * Main Activity for controlling the Translation Overlay.
+ * Main activity for the translator app.
  * 
- * Provides:
- * - Permission status and setup
+ * Uses Hilt for dependency injection and ViewModel for state management.
+ * 
+ * Responsibilities:
+ * - Permission management (overlay, accessibility)
  * - Service status display
- * - Cache statistics
+ * - Navigation to other screens
  * - Debug mode toggle
  */
-class MainActivity : AppCompatActivity() {
+@AndroidEntryPoint
+class MainActivity : BaseActivity() {
     
-    companion object {
-        private const val OVERLAY_PERMISSION_REQUEST = 1001
-    }
+    private val viewModel: MainViewModel by viewModels()
     
-    private lateinit var statusText: TextView
+    // UI References
+    private lateinit var overlayStatusText: TextView
+    private lateinit var accessibilityStatusText: TextView
+    private lateinit var modelStatusText: TextView
     private lateinit var cacheStatsText: TextView
-    private lateinit var overlayPermissionBtn: Button
-    private lateinit var accessibilityBtn: Button
-    private lateinit var toggleOverlayBtn: Button
-    private lateinit var debugModeBtn: Button
-    private lateinit var logTextView: TextView
-    
-    private fun appendLog(msg: String) {
-        runOnUiThread {
-            if (::logTextView.isInitialized) {
-                val currentText = logTextView.text.toString()
-                val newText = "$msg\n$currentText"
-                // Keep only last 10 lines
-                val lines = newText.split("\n").take(10).joinToString("\n")
-                logTextView.text = lines
-            }
-        }
-    }
+    private lateinit var debugCheckbox: CheckBox
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Build UI programmatically (no XML layout needed)
-        setContentView(createContentView())
-        
-        // Initialize Dictionary
-        com.leapmotor.translator.translation.TranslationManager.getInstance().init(this)
-        
-        // Initial status update
-        updateStatus()
-        
-        // Check for previous crashes
+        setupUI()
+        observeViewModel()
         checkCrashLog()
+        
+        // Initialize translation model
+        viewModel.initializeTranslation()
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        updatePermissionStatus()
+        viewModel.refresh()
+    }
+    
+    private fun setupUI() {
+        val rootLayout = ScrollView(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(0xFF0f0f23.toInt())
+        }
+        
+        val contentLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setPadding(48, 48, 48, 48)
+        }
+        
+        // Header
+        contentLayout.addView(createHeader())
+        
+        // Permission Cards
+        contentLayout.addView(createSectionTitle("🔐 Разрешения"))
+        contentLayout.addView(createOverlayPermissionCard())
+        contentLayout.addView(createAccessibilityCard())
+        
+        // Status Cards
+        contentLayout.addView(createSectionTitle("📊 Статус"))
+        contentLayout.addView(createModelStatusCard())
+        contentLayout.addView(createCacheStatsCard())
+        
+        // Actions
+        contentLayout.addView(createSectionTitle("⚙️ Действия"))
+        contentLayout.addView(createActionsCard())
+        
+        // Debug Mode
+        contentLayout.addView(createDebugCard())
+        
+        // MIUI specific
+        if (PermissionUtils.isXiaomiDevice()) {
+            contentLayout.addView(createMIUICard())
+        }
+        
+        rootLayout.addView(contentLayout)
+        setContentView(rootLayout)
+    }
+    
+    private fun createHeader(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 48)
+            
+            addView(TextView(this@MainActivity).apply {
+                text = "🚗"
+                textSize = 48f
+                gravity = Gravity.CENTER
+            })
+            
+            addView(TextView(this@MainActivity).apply {
+                text = "Leapmotor Translator"
+                textSize = 24f
+                setTextColor(0xFFFFFFFF.toInt())
+                gravity = Gravity.CENTER
+            })
+            
+            addView(TextView(this@MainActivity).apply {
+                text = "Перевод китайского интерфейса на русский"
+                textSize = 14f
+                setTextColor(0xFF888888.toInt())
+                gravity = Gravity.CENTER
+            })
+        }
+    }
+    
+    private fun createSectionTitle(text: String): TextView {
+        return TextView(this).apply {
+            this.text = text
+            textSize = 18f
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(0, 32, 0, 16)
+        }
+    }
+    
+    private fun createOverlayPermissionCard(): LinearLayout {
+        return createCard().apply {
+            addView(TextView(this@MainActivity).apply {
+                text = "Разрешение на наложение"
+                textSize = 16f
+                setTextColor(0xFFFFFFFF.toInt())
+            })
+            
+            overlayStatusText = TextView(this@MainActivity).apply {
+                text = "Проверка..."
+                textSize = 12f
+                setTextColor(0xFF888888.toInt())
+            }
+            addView(overlayStatusText)
+            
+            setOnClickListener {
+                if (!Settings.canDrawOverlays(this@MainActivity)) {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                }
+            }
+        }
+    }
+    
+    private fun createAccessibilityCard(): LinearLayout {
+        return createCard().apply {
+            addView(TextView(this@MainActivity).apply {
+                text = "Сервис специальных возможностей"
+                textSize = 16f
+                setTextColor(0xFFFFFFFF.toInt())
+            })
+            
+            accessibilityStatusText = TextView(this@MainActivity).apply {
+                text = "Проверка..."
+                textSize = 12f
+                setTextColor(0xFF888888.toInt())
+            }
+            addView(accessibilityStatusText)
+            
+            addView(Button(this@MainActivity).apply {
+                text = "Настройки доступности"
+                setBackgroundColor(0xFF3366FF.toInt())
+                setTextColor(0xFFFFFFFF.toInt())
+                setOnClickListener {
+                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                }
+            })
+        }
+    }
+    
+    private fun createModelStatusCard(): LinearLayout {
+        return createCard().apply {
+            addView(TextView(this@MainActivity).apply {
+                text = "Модель перевода"
+                textSize = 16f
+                setTextColor(0xFFFFFFFF.toInt())
+            })
+            
+            modelStatusText = TextView(this@MainActivity).apply {
+                text = "Инициализация..."
+                textSize = 12f
+                setTextColor(0xFF888888.toInt())
+            }
+            addView(modelStatusText)
+        }
+    }
+    
+    private fun createCacheStatsCard(): LinearLayout {
+        return createCard().apply {
+            addView(TextView(this@MainActivity).apply {
+                text = "Статистика кэша"
+                textSize = 16f
+                setTextColor(0xFFFFFFFF.toInt())
+            })
+            
+            cacheStatsText = TextView(this@MainActivity).apply {
+                text = "Загрузка..."
+                textSize = 12f
+                setTextColor(0xFF888888.toInt())
+            }
+            addView(cacheStatsText)
+            
+            addView(Button(this@MainActivity).apply {
+                text = "Очистить кэш"
+                setBackgroundColor(0xFFFF5555.toInt())
+                setTextColor(0xFFFFFFFF.toInt())
+                setOnClickListener { viewModel.clearCache() }
+            })
+        }
+    }
+    
+    private fun createActionsCard(): LinearLayout {
+        return createCard().apply {
+            addView(Button(this@MainActivity).apply {
+                text = "📚 Словарь / Редактор"
+                setBackgroundColor(0xFF4CAF50.toInt())
+                setTextColor(0xFFFFFFFF.toInt())
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(0, 8, 0, 8) }
+                setOnClickListener {
+                    startActivity(Intent(this@MainActivity, DictionaryActivity::class.java))
+                }
+            })
+            
+            addView(Button(this@MainActivity).apply {
+                text = "📝 История распознаваний"
+                setBackgroundColor(0xFF2196F3.toInt())
+                setTextColor(0xFFFFFFFF.toInt())
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(0, 8, 0, 8) }
+                setOnClickListener {
+                    startActivity(Intent(this@MainActivity, RecognizedWordsActivity::class.java))
+                }
+            })
+        }
+    }
+    
+    private fun createDebugCard(): LinearLayout {
+        return createCard().apply {
+            debugCheckbox = CheckBox(this@MainActivity).apply {
+                text = "Отладка: показать границы"
+                setTextColor(0xFFFFFFFF.toInt())
+                setOnCheckedChangeListener { _, isChecked ->
+                    TranslationService.instance?.setDebugMode(isChecked)
+                }
+            }
+            addView(debugCheckbox)
+        }
+    }
+    
+    private fun createMIUICard(): LinearLayout {
+        return createCard().apply {
+            addView(TextView(this@MainActivity).apply {
+                text = "⚠️ Настройки MIUI"
+                textSize = 16f
+                setTextColor(0xFFFFD700.toInt())
+            })
+            
+            addView(TextView(this@MainActivity).apply {
+                text = "На Xiaomi/Redmi требуются дополнительные разрешения"
+                textSize = 12f
+                setTextColor(0xFF888888.toInt())
+            })
+            
+            addView(Button(this@MainActivity).apply {
+                text = "Открыть настройки MIUI"
+                setBackgroundColor(0xFFFF9800.toInt())
+                setTextColor(0xFFFFFFFF.toInt())
+                setOnClickListener {
+                    PermissionUtils.openMIUIPermissionSettings(this@MainActivity)
+                }
+            })
+        }
+    }
+    
+    private fun createCard(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 8, 0, 8) }
+            setBackgroundColor(0xFF1a1a2e.toInt())
+            setPadding(32, 24, 32, 24)
+        }
+    }
+    
+    private fun observeViewModel() {
+        // Observe model state
+        viewModel.modelState.collectLatestWithLifecycle(this) { state ->
+            updateModelStatus(state)
+        }
+        
+        // Observe cache stats
+        viewModel.cacheStats.collectLatestWithLifecycle(this) { stats ->
+            cacheStatsText.text = "Размер: ${stats.size} | Попаданий: ${stats.hits} | " +
+                "Промахов: ${stats.misses} | Hit rate: ${(stats.hitRate * 100).toInt()}%"
+        }
+        
+        // Observe events
+        viewModel.events.collectLatestWithLifecycle(this) { event ->
+            when (event) {
+                is MainViewModel.MainEvent.ShowToast -> showToast(event.message)
+                is MainViewModel.MainEvent.ToggleDebugMode -> {
+                    debugCheckbox.isChecked = !debugCheckbox.isChecked
+                }
+                is MainViewModel.MainEvent.NavigateToDictionary -> {
+                    startActivity(Intent(this, DictionaryActivity::class.java))
+                }
+                else -> {}
+            }
+        }
+    }
+    
+    private fun updatePermissionStatus() {
+        // Overlay permission
+        val hasOverlay = Settings.canDrawOverlays(this)
+        overlayStatusText.text = if (hasOverlay) "✅ Разрешено" else "❌ Требуется"
+        overlayStatusText.setTextColor(if (hasOverlay) 0xFF00FF00.toInt() else 0xFFFF0000.toInt())
+        
+        // Accessibility service
+        val serviceRunning = TranslationService.instance != null
+        accessibilityStatusText.text = if (serviceRunning) "✅ Активен" else "❌ Не активен"
+        accessibilityStatusText.setTextColor(if (serviceRunning) 0xFF00FF00.toInt() else 0xFFFF0000.toInt())
+    }
+    
+    private fun updateModelStatus(state: MainViewModel.ModelStatus) {
+        val (text, color) = when (state) {
+            is MainViewModel.ModelStatus.NotInitialized -> "⏳ Не инициализирован" to 0xFF888888
+            is MainViewModel.ModelStatus.Initializing -> "⏳ Инициализация..." to 0xFFFFD700
+            is MainViewModel.ModelStatus.Downloading -> "⬇️ Загрузка модели..." to 0xFF2196F3
+            is MainViewModel.ModelStatus.Ready -> "✅ Готова к работе" to 0xFF00FF00
+            is MainViewModel.ModelStatus.Error -> "❌ Ошибка: ${state.message}" to 0xFFFF0000
+        }
+        modelStatusText.text = text
+        modelStatusText.setTextColor(color.toInt())
     }
     
     private fun checkCrashLog() {
         val crashFile = java.io.File(filesDir, "crash_log.txt")
         if (crashFile.exists()) {
-            try {
-                val crashText = crashFile.readText()
-                if (crashText.isNotEmpty()) {
-                    // Show crash dialog or append to log
-                    runOnUiThread {
-                        android.app.AlertDialog.Builder(this)
-                            .setTitle("Обнаружен вылет!")
-                            .setMessage("Приложение завершилось с ошибкой:\n\n${crashText.take(500)}...")
-                            .setPositiveButton("ОК") { _, _ -> 
-                                // Rename/delete file so we don't show it again
-                                crashFile.delete() 
-                            }
-                            .setNeutralButton("Копировать") { _, _ ->
-                                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                val clip = android.content.ClipData.newPlainText("Crash Log", crashText)
-                                clipboard.setPrimaryClip(clip)
-                                Toast.makeText(this, "Лог скопирован", Toast.LENGTH_SHORT).show()
-                                crashFile.delete()
-                            }
-                            .show()
-                            
-                        appendLog("ОБНАРУЖЕН КРАШ:\n$crashText")
-                    }
+            val content = crashFile.readText().take(500)
+            
+            android.app.AlertDialog.Builder(this)
+                .setTitle("⚠️ Обнаружен сбой")
+                .setMessage("Приложение завершилось с ошибкой:\n\n$content...")
+                .setPositiveButton("OK") { _, _ ->
+                    crashFile.delete()
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-    
-    override fun onResume() {
-        super.onResume()
-        updateStatus()
-    }
-    
-    private fun createContentView(): View {
-        val scrollView = ScrollView(this).apply {
-            setBackgroundColor(Color.parseColor("#1a1a2e"))
-            setPadding(48, 48, 48, 48)
-        }
-        
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-        
-        // Title
-        val title = TextView(this).apply {
-            text = "Leapmotor C11\nПереводчик"
-            textSize = 28f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 48)
-        }
-        layout.addView(title)
-        
-        // Status text
-        statusText = TextView(this).apply {
-            text = "Проверка статуса..."
-            textSize = 16f
-            setTextColor(Color.parseColor("#888888"))
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 32)
-        }
-        layout.addView(statusText)
-        
-        // Overlay permission button
-        overlayPermissionBtn = Button(this).apply {
-            text = "Разрешение на наложение"
-            setOnClickListener { requestOverlayPermission() }
-            setPadding(32, 24, 32, 24)
-        }
-        layout.addView(overlayPermissionBtn, createButtonParams())
-        
-        // User Dictionary Button
-        val dictionaryBtn = Button(this).apply {
-            text = "Словарь / Редактор"
-            setOnClickListener { 
-                startActivity(Intent(this@MainActivity, DictionaryActivity::class.java))
-            }
-            setPadding(32, 24, 32, 24)
-        }
-        layout.addView(dictionaryBtn, createButtonParams())
-
-        // Debug History Button
-        val historyBtn = Button(this).apply {
-            text = "История распознавания (Debug)"
-            setTextColor(Color.CYAN)
-            setOnClickListener { 
-                startActivity(Intent(this@MainActivity, RecognizedWordsActivity::class.java))
-            }
-            setPadding(32, 24, 32, 24)
-        }
-        layout.addView(historyBtn, createButtonParams())
-
-        // Accessibility settings button
-        accessibilityBtn = Button(this).apply {
-            text = "Настройки доступности"
-            setOnClickListener { openAccessibilitySettings() }
-            setPadding(32, 24, 32, 24)
-        }
-        layout.addView(accessibilityBtn, createButtonParams())
-
-        // MIUI Specific Permissions
-        if (com.leapmotor.translator.util.PermissionUtils.isXiaomi()) {
-             val miuiBtn = Button(this).apply {
-                text = "Настройка Xiaomi / MIUI"
-                setTextColor(Color.YELLOW)
-                setOnClickListener { 
-                    android.app.AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Настройка Xiaomi (MIUI)")
-                        .setMessage("Для работы на Xiaomi/Redmi требуется выдать специальные разрешения:\n\n1. Автозапуск\n2. Отображать всплывающие окна")
-                        .setPositiveButton("Автозапуск") { _, _ ->
-                            com.leapmotor.translator.util.PermissionUtils.openMiuiAutostart(this@MainActivity)
-                        }
-                        .setNegativeButton("Всплывающие окна") { _, _ ->
-                             com.leapmotor.translator.util.PermissionUtils.openMiuiPopupPermission(this@MainActivity)
-                        }
-                        .setNeutralButton("Закрыть", null)
-                        .show()
-                }
-                setPadding(32, 24, 32, 24)
-            }
-            layout.addView(miuiBtn, createButtonParams())
-        }
-
-        // Update Button (Web)
-        val updateBtn = Button(this).apply {
-            text = "Проверить обновления / Скачать"
-            setOnClickListener { 
-                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/d7dax/LeapmotorTranslator/actions"))
-                startActivity(browserIntent)
-            }
-            setPadding(32, 24, 32, 24)
-        }
-        layout.addView(updateBtn, createButtonParams())
-        
-
-
-        // Manual Download Button
-        val downloadModelBtn = Button(this).apply {
-            text = "Загрузить словарь вручную"
-            setOnClickListener { 
-                isEnabled = false
-                text = "Запуск загрузки..."
-                // Use GlobalScope or lifecycleScope (if available, else Thread) since we are in simplified context
-                // But better to use simple Thread for compatibility if scope is not setup
-                 android.os.Handler(android.os.Looper.getMainLooper()).post {
-                     val manager = com.leapmotor.translator.translation.TranslationManager.getInstance()
-                     Thread {
-                         kotlinx.coroutines.runBlocking {
-                             manager.initialize()
-                         }
-                     }.start()
-                 }
-            }
-            setPadding(32, 24, 32, 24)
-        }
-        layout.addView(downloadModelBtn, createButtonParams())
-        
-        // Toggle overlay button
-        toggleOverlayBtn = Button(this).apply {
-            text = "Вкл/Выкл наложение"
-            setOnClickListener { toggleOverlay() }
-            setPadding(32, 24, 32, 24)
-            isEnabled = false
-        }
-        layout.addView(toggleOverlayBtn, createButtonParams())
-        
-        // Debug mode button
-        debugModeBtn = Button(this).apply {
-            text = "Режим отладки"
-            setOnClickListener { toggleDebugMode() }
-            setPadding(32, 24, 32, 24)
-            isEnabled = false
-        }
-        layout.addView(debugModeBtn, createButtonParams())
-        
-        // Cache statistics
-        cacheStatsText = TextView(this).apply {
-            text = ""
-            textSize = 14f
-            setTextColor(Color.parseColor("#666666"))
-            gravity = Gravity.CENTER
-            setPadding(0, 48, 0, 0)
-        }
-        layout.addView(cacheStatsText)
-        
-        // Logs
-        val logLabel = TextView(this).apply {
-            text = "Лог событий:"
-            textSize = 14f
-            setTextColor(Color.LTGRAY)
-            setPadding(0, 32, 0, 8)
-        }
-        layout.addView(logLabel)
-
-        val logText = TextView(this).apply {
-            text = "..."
-            textSize = 12f
-            setTextColor(Color.YELLOW)
-            setBackgroundColor(Color.parseColor("#33000000"))
-            setPadding(16, 16, 16, 16)
-            maxLines = 10
-        }
-        layout.addView(logText)
-        this.logTextView = logText
-
-        // Instructions
-        val instructions = TextView(this).apply {
-            text = """
-                Инструкция по настройке:
-                
-                1. Нажмите "Разрешение на наложение" и включите разрешение для этого приложения
-                
-                2. Нажмите "Настройки доступности", найдите "Переводчик интерфейса" и включите его
-                
-                3. Вернитесь в это приложение - перевод должен работать автоматически
-                
-                Приложение переводит китайский текст интерфейса на русский язык в реальном времени.
-            """.trimIndent()
-            textSize = 14f
-            setTextColor(Color.parseColor("#aaaaaa"))
-            setPadding(0, 64, 0, 0)
-        }
-        layout.addView(instructions)
-        
-        scrollView.addView(layout)
-        return scrollView
-    }
-    
-    private fun createButtonParams(): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            setMargins(0, 16, 0, 16)
-        }
-    }
-    
-    private fun updateStatus() {
-        val hasOverlayPermission = Settings.canDrawOverlays(this)
-        val isServiceRunning = TranslationService.instance != null
-        val translationManager = com.leapmotor.translator.translation.TranslationManager.getInstance()
-        
-        // Subscribe to download state changes
-        translationManager.setOnDownloadStateChangeListener { state ->
-            runOnUiThread {
-                val statusBuilder = StringBuilder()
-                
-                // Overlay permission status
-                statusBuilder.append("Наложение: ")
-                if (hasOverlayPermission) {
-                    statusBuilder.append("✓ Разрешено\n")
-                    overlayPermissionBtn.isEnabled = false
-                    overlayPermissionBtn.alpha = 0.5f
-                } else {
-                    statusBuilder.append("✗ Требуется разрешение\n")
-                    overlayPermissionBtn.isEnabled = true
-                    overlayPermissionBtn.alpha = 1f
-                }
-                
-                // Accessibility service status
-                statusBuilder.append("Сервис: ")
-                if (isAccessibilityServiceEnabled()) {
-                    if (isServiceRunning) {
-                        statusBuilder.append("✓ Активен и работает\n")
-                    } else {
-                        statusBuilder.append("⚠ Включен, но не запущен (перезагрузите телефон)\n")
-                    }
-                    accessibilityBtn.alpha = 0.5f
-                } else {
-                    statusBuilder.append("✗ Не включен в настройках\n")
-                    accessibilityBtn.alpha = 1f
-                }
-
-                if (isServiceRunning) {
-                    toggleOverlayBtn.isEnabled = true
-                    debugModeBtn.isEnabled = true
-                } else {
-                    toggleOverlayBtn.isEnabled = false
-                    debugModeBtn.isEnabled = false
-                }
-                
-                // Translation model status
-                statusBuilder.append("Перевод: ")
-                when (state) {
-                    com.leapmotor.translator.translation.TranslationManager.DownloadState.NOT_STARTED -> statusBuilder.append("Ожидание...\n")
-                    com.leapmotor.translator.translation.TranslationManager.DownloadState.DOWNLOADING -> statusBuilder.append("⏳ Загрузка словаря...\n")
-                    com.leapmotor.translator.translation.TranslationManager.DownloadState.DOWNLOADED -> {
-                        statusBuilder.append("✓ Словарь готов\n")
-                        val stats = translationManager.getCacheStats()
-                        cacheStatsText.text = "Кэш: ${stats.size} | Эффективность: ${(stats.hitRate * 100).toInt()}%"
-                    }
-                    com.leapmotor.translator.translation.TranslationManager.DownloadState.ERROR -> statusBuilder.append("✗ Ошибка загрузки (проверьте интернет)\n")
-                }
-                
-                statusText.text = statusBuilder.toString()
-            }
-        }
-        
-        translationManager.setOnErrorListener { e ->
-            appendLog("Ошибка ML Kit: ${e.message}")
-            runOnUiThread {
-                statusText.text = "Ошибка: ${e.message}"
-                statusText.setTextColor(Color.RED)
-            }
-        }
-    }
-    
-    private fun requestOverlayPermission() {
-        if (!Settings.canDrawOverlays(this)) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST)
-        }
-    }
-    
-    private fun openAccessibilitySettings() {
-        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        startActivity(intent)
-        Toast.makeText(
-            this,
-            "Найдите 'Переводчик интерфейса' и включите его",
-            Toast.LENGTH_LONG
-        ).show()
-    }
-    
-    private fun toggleOverlay() {
-        TranslationService.instance?.toggleOverlay()
-        Toast.makeText(this, "Наложение переключено", Toast.LENGTH_SHORT).show()
-    }
-    
-    private var debugMode = false
-    
-    private fun toggleDebugMode() {
-        debugMode = !debugMode
-        TranslationService.instance?.setDebugMode(debugMode)
-        debugModeBtn.text = if (debugMode) "Отладка: ВКЛ" else "Отладка: ВЫКЛ"
-        Toast.makeText(
-            this,
-            if (debugMode) "Режим отладки включен" else "Режим отладки выключен",
-            Toast.LENGTH_SHORT
-        ).show()
-    }
-    
-    private fun isAccessibilityServiceEnabled(): Boolean {
-        val expectedComponentName = ComponentName(this, TranslationService::class.java)
-        val enabledServicesSetting = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
-        
-        val colonSplitter = TextUtils.SimpleStringSplitter(':')
-        colonSplitter.setString(enabledServicesSetting)
-        
-        while (colonSplitter.hasNext()) {
-            val componentNameString = colonSplitter.next()
-            val enabledComponent = ComponentName.unflattenFromString(componentNameString)
-            if (enabledComponent != null && enabledComponent == expectedComponentName) {
-                return true
-            }
-        }
-        return false
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == OVERLAY_PERMISSION_REQUEST) {
-            updateStatus()
+                .show()
         }
     }
 }
