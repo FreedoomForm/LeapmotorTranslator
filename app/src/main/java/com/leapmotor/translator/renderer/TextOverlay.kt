@@ -190,41 +190,92 @@ class TextOverlay(context: Context) : View(context) {
             canvas.drawRect(item.bounds, debugPaint)
         }
 
-        // Initial font size
-        var fontSize = item.fontSize
-        textPaint.textSize = fontSize
-
-        // Auto-scale text to fit width
-        val availableWidth = item.bounds.width() - 4f
+        // --- 1. CONFIGURATION ---
+        // Target font size (user wants it big/readable)
+        val targetFontSize = item.fontSize.coerceAtLeast(20f) 
+        textPaint.textSize = targetFontSize
+        shadowPaint.textSize = targetFontSize
+        
+        val availableWidth = (item.bounds.width() - 4f).coerceAtLeast(1f)
         val textWidth = textPaint.measureText(item.text)
         
-        if (textWidth > availableWidth) {
-            // Simple proportional scaling
-            fontSize = fontSize * (availableWidth / textWidth)
-            // Clamp min size
-            if (fontSize < 8f) fontSize = 8f
-            textPaint.textSize = fontSize
-        }
-        
-        shadowPaint.textSize = fontSize
-        
-        // Calculate text positioning
-        val fontMetrics = textPaint.fontMetrics
+        // --- 2. POSITIONING ---
+        // "up russian text to 20 pixels more" -> Previous was -10f, now -30f
         val x = item.bounds.left + 2f
         val centerY = item.bounds.centerY()
-        // "up the text to 10 pixels" -> shift up by 10
-        val y = centerY - (fontMetrics.descent + fontMetrics.ascent) / 2f - 10f
+        val yOffset = -30f 
         
-        // Draw shadow first
-        canvas.drawText(item.text, x, y, shadowPaint)
-        
-        // Draw main text
-        canvas.drawText(item.text, x, y, textPaint)
+        // --- 3. RENDERING STRATEGY ---
+        if (textWidth <= availableWidth) {
+            // Case A: Fits on one line
+            val fontMetrics = textPaint.fontMetrics
+            val lineY = centerY - (fontMetrics.descent + fontMetrics.ascent) / 2f + yOffset
+            
+            canvas.drawText(item.text, x, lineY, shadowPaint)
+            canvas.drawText(item.text, x, lineY, textPaint)
+        } else {
+            // Case B: Too long -> Multi-line Wrap (to keep text big)
+            // Use StaticLayout to wrap text
+            val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                android.text.StaticLayout.Builder.obtain(item.text, 0, item.text.length, textPaint, availableWidth.toInt())
+                    .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+                    .setLineSpacing(0f, 1.0f)
+                    .setIncludePad(false)
+                    .build()
+            } else {
+                @Suppress("DEPRECATION")
+                android.text.StaticLayout(
+                    item.text, 
+                    textPaint, 
+                    availableWidth.toInt(), 
+                    android.text.Layout.Alignment.ALIGN_NORMAL, 
+                    1.0f, 
+                    0f, 
+                    false
+                )
+            }
+            
+            // Draw Layout centered vertically at the offset position
+            canvas.save()
+            val layoutHeight = builder.height.toFloat()
+            // Center the *block* of text at (centerY + yOffset)
+            val layoutTop = centerY + yOffset - (layoutHeight / 2f)
+            
+            canvas.translate(x, layoutTop)
+            
+            // Draw shadow (hack: draw same layout with shadow paint, but StaticLayout uses Paint from construction)
+            // StaticLayout is tied to the Paint passed in constructor.
+            // To draw shadow efficiently for Layout, we can't easily swap paint.
+            // Alternative: Draw main text with shadow layer?
+            // Or construct a second layout for shadow? Second layout is expensive.
+            // Let's use setShadowLayer on the main paint temporarily?
+            // Or just draw the text twice by swapping paint color/style? 
+            // StaticLayout uses the TextPaint object reference. We can modify the TextPaint state.
+            
+            // Draw Shadow
+            val originalColor = textPaint.color
+            val originalStyle = textPaint.style
+            val originalStroke = textPaint.strokeWidth
+            
+            // Apply Shadow Style to textPaint
+            textPaint.color = shadowPaint.color
+            textPaint.style = Paint.Style.STROKE
+            textPaint.strokeWidth = shadowPaint.strokeWidth
+            builder.draw(canvas)
+            
+            // Restore and Draw Text
+            textPaint.color = originalColor
+            textPaint.style = Paint.Style.FILL
+            textPaint.strokeWidth = 0f
+            builder.draw(canvas)
+            
+            canvas.restore()
+        }
         
         // Debug: draw bounds and info
         if (debugMode) {
             canvas.drawRect(item.bounds, debugBorderPaint)
-            val info = "${fontSize.toInt()}px"
+            val info = "${targetFontSize.toInt()}px"
             canvas.drawText(info, item.bounds.left, item.bounds.top - 2f, debugInfoPaint)
         }
     }

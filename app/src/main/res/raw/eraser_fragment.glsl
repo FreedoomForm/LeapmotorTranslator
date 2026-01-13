@@ -21,7 +21,7 @@ uniform float uTime;                // Animation time for noise variation
 uniform int uIsLightBackground;     // 0 = Dark (default), 1 = Light
 
 // Padding added to each bounding box to ensure complete coverage
-const float BOX_PADDING = 2.0;
+const float BOX_PADDING = 4.0;
 
 // ============================================================================
 // SIMPLEX NOISE IMPLEMENTATION
@@ -160,11 +160,9 @@ void main() {
         vec4 fillColor = getSolidFill(vScreenPos);
         
         // Apply coverage as alpha for smooth edges
-        // TRANSPARENCY TWEAK: Multiply by 0.96
-        // This makes the eraser 96% opaque / 4% transparent.
-        // It helps the box "sit" in the scene better by letting slight light through,
-        // but remains opaque enough to hide the Chinese text.
-        fragColor = vec4(fillColor.rgb, coverage * 0.96);
+        // RESTORED FULL OPACITY: User reported "Chinese words not working" (still visible).
+        // Removing transparency to ensure complete erasing.
+        fragColor = vec4(fillColor.rgb, coverage);
         
     } else {
         // === OUTSIDE TEXT BOXES: Fully transparent ===
