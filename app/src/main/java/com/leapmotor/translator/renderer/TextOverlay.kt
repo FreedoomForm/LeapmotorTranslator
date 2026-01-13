@@ -128,7 +128,7 @@ class TextOverlay(context: Context) : View(context) {
      * Text styling configuration.
      */
     object Style {
-        var textColor: Int = Color.WHITE
+        var textColor: Int = Color.rgb(0, 0, 139) // Dark Blue
         var shadowColor: Int = Color.BLACK
         var shadowWidth: Float = 3f
         var statusDotSize: Float = 10f
@@ -189,31 +189,42 @@ class TextOverlay(context: Context) : View(context) {
         if (debugMode) {
             canvas.drawRect(item.bounds, debugPaint)
         }
+
+        // Initial font size
+        var fontSize = item.fontSize
+        textPaint.textSize = fontSize
+
+        // Auto-scale text to fit width
+        val availableWidth = item.bounds.width() - 4f
+        val textWidth = textPaint.measureText(item.text)
         
-        // Set font size
-        textPaint.textSize = item.fontSize
-        shadowPaint.textSize = item.fontSize
+        if (textWidth > availableWidth) {
+            // Simple proportional scaling
+            fontSize = fontSize * (availableWidth / textWidth)
+            // Clamp min size
+            if (fontSize < 8f) fontSize = 8f
+            textPaint.textSize = fontSize
+        }
+        
+        shadowPaint.textSize = fontSize
         
         // Calculate text positioning
         val fontMetrics = textPaint.fontMetrics
         val x = item.bounds.left + 2f
         val centerY = item.bounds.centerY()
-        val y = centerY - (fontMetrics.descent + fontMetrics.ascent) / 2f
-        
-        // Get display text (truncated if needed)
-        val availableWidth = item.bounds.width() - 4f
-        val displayText = fitTextToWidth(item.text, availableWidth)
+        // "up the text to 10 pixels" -> shift up by 10
+        val y = centerY - (fontMetrics.descent + fontMetrics.ascent) / 2f - 10f
         
         // Draw shadow first
-        canvas.drawText(displayText, x, y, shadowPaint)
+        canvas.drawText(item.text, x, y, shadowPaint)
         
         // Draw main text
-        canvas.drawText(displayText, x, y, textPaint)
+        canvas.drawText(item.text, x, y, textPaint)
         
         // Debug: draw bounds and info
         if (debugMode) {
             canvas.drawRect(item.bounds, debugBorderPaint)
-            val info = "${item.fontSize.toInt()}px"
+            val info = "${fontSize.toInt()}px"
             canvas.drawText(info, item.bounds.left, item.bounds.top - 2f, debugInfoPaint)
         }
     }

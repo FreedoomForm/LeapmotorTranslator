@@ -474,6 +474,16 @@ class TranslationService : AccessibilityService() {
                 element.predictedY + element.bounds.height()
             )
         }
+        
+        // Smart Theme Detection: If text is dark, background is likely light
+        val textColor = TextOverlay.Style.textColor
+        val r = android.graphics.Color.red(textColor)
+        val g = android.graphics.Color.green(textColor)
+        val b = android.graphics.Color.blue(textColor)
+        val brightness = (0.299*r + 0.587*g + 0.114*b)
+        val isLightBg = brightness < 128
+        
+        eraserView?.renderer?.isLightBackground = isLightBg
         eraserView?.renderer?.updateBoundingBoxes(boundingBoxes)
         eraserView?.requestRender()
         

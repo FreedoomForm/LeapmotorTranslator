@@ -74,8 +74,8 @@ class KalmanFilter2D private constructor() {
             predictionTimeMs: Long = 10L
         ): KalmanFilter2D = KalmanFilter2D().apply {
             this.processNoise = processNoise
-            this.measurementNoise = measurementNoise
-            this.predictionTimeMs = predictionTimeMs
+            this.measurementNoise = 0.01f // Reduced for faster tracking
+            this.predictionTimeMs = 5L // Reduced to prevent overshoot
         }
     }
     
@@ -148,8 +148,19 @@ class KalmanFilter2D private constructor() {
         // Velocity update using innovation
         val measuredVx = innovX / dt
         val measuredVy = innovY / dt
+        
+        // Apply Kalman gain to velocity
         vx += kvx * measuredVx
         vy += kvy * measuredVy
+        
+        // Apply friction/damping to prevent overshoot when stopping
+        // This addresses "text falls down" issue
+        vx *= 0.8f
+        vy *= 0.8f
+        
+        // Snap to zero if velocity is very low to prevent drift
+        if (kotlin.math.abs(vx) < 5f) vx = 0f
+        if (kotlin.math.abs(vy) < 5f) vy = 0f
         
         // Error update
         px = (1f - kx) * pxPred

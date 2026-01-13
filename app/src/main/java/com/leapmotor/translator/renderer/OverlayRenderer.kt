@@ -31,6 +31,7 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private var uTimeLoc: Int = -1
     private var uBoxCountLoc: Int = -1
     private var uBoundingBoxesLoc: Int = -1
+    private var uIsLightBackgroundLoc: Int = -1
     
     // Attribute locations
     private var aPositionLoc: Int = 0
@@ -50,6 +51,10 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
     // Bounding boxes for text areas (max 32)
     private val boundingBoxes = FloatArray(32 * 4)  // x, y, width, height for each
     private var boxCount: Int = 0
+    
+    // Theme state
+    @Volatile
+    var isLightBackground: Boolean = false
     
     // Thread safety lock
     private val boxLock = Any()
@@ -133,6 +138,9 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
             // Calculate elapsed time for animation
             val elapsed = (SystemClock.elapsedRealtime() - startTime) / 1000f
             GLES30.glUniform1f(uTimeLoc, elapsed)
+            
+            // Update Theme Uniform
+            GLES30.glUniform1i(uIsLightBackgroundLoc, if (isLightBackground) 1 else 0)
             
             // Upload bounding boxes
             synchronized(boxLock) {
@@ -230,6 +238,7 @@ class OverlayRenderer(private val context: Context) : GLSurfaceView.Renderer {
         uTimeLoc = GLES30.glGetUniformLocation(programId, "uTime")
         uBoxCountLoc = GLES30.glGetUniformLocation(programId, "uBoxCount")
         uBoundingBoxesLoc = GLES30.glGetUniformLocation(programId, "uBoundingBoxes")
+        uIsLightBackgroundLoc = GLES30.glGetUniformLocation(programId, "uIsLightBackground")
         
         // Delete shader objects (no longer needed after linking)
         GLES30.glDeleteShader(vertexShader)

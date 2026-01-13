@@ -18,11 +18,10 @@ out vec4 fragColor;
 // Uniforms
 uniform vec2 uResolution;           // Screen resolution in pixels
 uniform float uTime;                // Animation time for noise variation
-uniform int uBoxCount;              // Number of active bounding boxes
-uniform vec4 uBoundingBoxes[32];    // Bounding boxes: (x, y, width, height) in screen pixels
+uniform int uIsLightBackground;     // 0 = Dark (default), 1 = Light
 
 // Padding added to each bounding box to ensure complete coverage
-const float BOX_PADDING = 4.0;
+const float BOX_PADDING = 2.0;
 
 // ============================================================================
 // SIMPLEX NOISE IMPLEMENTATION
@@ -88,16 +87,25 @@ float fbm(vec2 p, int octaves) {
 }
 
 // ============================================================================
-// SOLID COLOR FILL (More reliable than noise for erasing)
-// Matches typical car UI dark background
+// SOLID COLOR FILL (Smart Adaptive)
 // ============================================================================
 
 vec4 getSolidFill(vec2 screenPos) {
-    // Use a very dark gray that matches most car UI backgrounds
-    // Add subtle noise variation to avoid looking too flat
-    float noise = fbm(screenPos * 0.02 + uTime * 0.05, 3) * 0.03;
-    float gray = 0.08 + noise; // Very dark gray (8% brightness + noise)
-    return vec4(gray, gray, gray, 1.0);
+    if (uIsLightBackground == 1) {
+        // LIGHT THEME: Micro-Noise Texture
+        // Adds a subtle "matte paper" grain (amplitude 0.015)
+        // This prevents the "solid sticker" look.
+        float noise = fbm(screenPos * 0.05 + uTime * 0.02, 2) * 0.015;
+        float base = 0.96 + noise; 
+        return vec4(base, base, base, 1.0);
+    } else {
+        // DARK THEME: Textured fill
+        // Matches grainy car dashboard plastics/materials
+        float noise = fbm(screenPos * 0.02 + uTime * 0.05, 3);
+        float base = 0.10;
+        float val = base + noise * 0.05; 
+        return vec4(val, val, val, 1.0);
+    }
 }
 
 // ============================================================================
@@ -128,8 +136,8 @@ float getBoxCoverage(vec2 screenPos) {
             float dy = min(screenPos.y - top, bottom - screenPos.y);
             float distToEdge = min(dx, dy);
             
-            // Soft edge transition (within 3 pixels of boundary)
-            float edgeSoftness = smoothstep(0.0, 3.0, distToEdge);
+            // Soft edge transition (Much softer now: 6.0px)
+            float edgeSoftness = smoothstep(0.0, 6.0, distToEdge);
             maxCoverage = max(maxCoverage, edgeSoftness);
         }
     }
@@ -152,7 +160,11 @@ void main() {
         vec4 fillColor = getSolidFill(vScreenPos);
         
         // Apply coverage as alpha for smooth edges
-        fragColor = vec4(fillColor.rgb, coverage);
+        // TRANSPARENCY TWEAK: Multiply by 0.96
+        // This makes the eraser 96% opaque / 4% transparent.
+        // It helps the box "sit" in the scene better by letting slight light through,
+        // but remains opaque enough to hide the Chinese text.
+        fragColor = vec4(fillColor.rgb, coverage * 0.96);
         
     } else {
         // === OUTSIDE TEXT BOXES: Fully transparent ===
