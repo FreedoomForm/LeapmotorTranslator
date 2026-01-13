@@ -222,7 +222,6 @@ class TextOverlay(context: Context) : View(context) {
         } else {
             // Case B: Too long -> Multi-line Wrap
             val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                 android.text.StaticLayout.Builder.obtain(item.text, 0, item.text.length, textPaint, availableWidth.toInt())
                     .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
                     .setLineSpacing(0f, 1.0f)
