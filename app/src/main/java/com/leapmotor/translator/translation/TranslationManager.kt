@@ -377,6 +377,8 @@ class TranslationManager {
     }
     
     /**
+     * Cache statistics data class.
+     */
     data class CacheStats(
         val size: Int,
         val hits: Long,
@@ -386,4 +388,5 @@ class TranslationManager {
 }
 
 // CommonTranslations is now defined in CommonTranslations.kt
+
 
