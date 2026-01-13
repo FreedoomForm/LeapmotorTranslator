@@ -19,6 +19,8 @@ out vec4 fragColor;
 uniform vec2 uResolution;           // Screen resolution in pixels
 uniform float uTime;                // Animation time for noise variation
 uniform int uIsLightBackground;     // 0 = Dark (default), 1 = Light
+uniform int uBoxCount;              // Number of active boxes
+uniform vec4 uBoundingBoxes[32];    // Array of boxes (x, y, w, h)
 
 // Padding added to each bounding box to ensure complete coverage
 const float BOX_PADDING = 4.0;
@@ -93,10 +95,10 @@ float fbm(vec2 p, int octaves) {
 vec4 getSolidFill(vec2 screenPos) {
     if (uIsLightBackground == 1) {
         // LIGHT THEME: Micro-Noise Texture
-        // Brighter (0.95) to blend better with white backgrounds.
+        // Darkened to 0.85 again so user can SEE the eraser (0.95 was too invisible)
         // Opaque to ensure hiding.
         float noise = fbm(screenPos * 0.05 + uTime * 0.02, 2) * 0.015;
-        float base = 0.95 + noise; 
+        float base = 0.85 + noise; 
         return vec4(base, base, base, 1.0);
     } else {
         // DARK THEME: Textured fill

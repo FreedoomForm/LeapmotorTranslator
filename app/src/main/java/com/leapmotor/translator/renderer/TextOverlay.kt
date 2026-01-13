@@ -196,18 +196,22 @@ class TextOverlay(context: Context) : View(context) {
         // "1.5x" request -> Respect limits
         val targetFontSize = item.fontSize.coerceAtLeast(20f) 
         textPaint.textSize = targetFontSize
+        // "textning kengligini 1.75 baravar" (Width 1.75x, Height 1.5x -> Ratio ~1.17)
+        textPaint.textScaleX = 1.17f 
+        
         shadowPaint.textSize = targetFontSize
-        shadowPaint.strokeWidth = 5f // Thicker outline for "chetkiy" (sharpness)
+        shadowPaint.textScaleX = 1.17f
+        shadowPaint.strokeWidth = 5f 
         shadowPaint.style = Paint.Style.STROKE
         
         val availableWidth = (item.bounds.width() - 4f).coerceAtLeast(1f)
         val textWidth = textPaint.measureText(item.text)
         
         // --- 2. POSITIONING ---
-        // "better 25 pixels" -> Adjusted from -90f to -25f
+        // "textni 90 pixelga ko'tar" -> -90f
         val x = item.bounds.left + 2f
         val anchorY = item.bounds.top
-        val yOffset = -25f 
+        val yOffset = -90f 
         
         // --- 3. RENDERING STRATEGY ---
         if (textWidth <= availableWidth) {
