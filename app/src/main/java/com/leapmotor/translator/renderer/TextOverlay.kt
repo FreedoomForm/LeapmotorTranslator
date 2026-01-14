@@ -344,8 +344,8 @@ class TextOverlay(context: Context) : View(context) {
      * This covers the original Chinese text before Russian translation is drawn.
      */
     private fun drawEraserBox(canvas: Canvas, box: RectF) {
-        // Apply the same Y offset as text rendering (-90 pixels)
-        val yOffset = -90f
+        // Apply Y offset: -110 pixels (moved up by 20px from -90)
+        val yOffset = -110f
         val offsetBox = RectF(
             box.left,
             box.top + yOffset,
