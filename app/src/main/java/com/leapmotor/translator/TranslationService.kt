@@ -386,8 +386,8 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun calculateFontSize(text: String, bounds: RectF): Float {
-        // "set 2 scale up" -> 2.0x height multiplier
-        val heightBasedSize = bounds.height() * 2.0f 
+        // "set 2 scale up" -> 2.0x -> Reduced by 30% = 1.4x height multiplier
+        val heightBasedSize = bounds.height() * 1.4f 
         val avgCharWidth = 0.6f
         val requiredWidth = text.length * heightBasedSize * avgCharWidth
         
@@ -477,19 +477,26 @@ class TranslationService : AccessibilityService() {
         
         // Calculate eraser bounding boxes
         val boundingBoxes = elements.map { element ->
-            // Dynamic Eraser Size Logic:
-            // Scale padding based on text height (bigger text needs more buffer)
-            // Horizontal: 20% of height, Vertical: 10% of height
             val h = element.bounds.height()
             val pHoriz = (h * 0.2f).coerceAtLeast(6f)
             val pVert = (h * 0.1f).coerceAtLeast(4f)
             
-            RectF(
+            // Base box
+            val baseBox = RectF(
                 element.bounds.left - pHoriz,
                 element.predictedY - pVert,
                 element.bounds.right + pHoriz,
                 element.predictedY + h + pVert
             )
+            
+            // Apply 30% reduction (scale to 70%) to match text size
+            val scale = 0.7f
+            val cx = baseBox.centerX()
+            val cy = baseBox.centerY()
+            val newWidth = baseBox.width() * scale
+            val newHeight = baseBox.height() * scale
+            
+            RectF(cx - newWidth/2f, cy - newHeight/2f, cx + newWidth/2f, cy + newHeight/2f)
         }
         
         // Smart Theme Detection: If text is dark, background is likely light

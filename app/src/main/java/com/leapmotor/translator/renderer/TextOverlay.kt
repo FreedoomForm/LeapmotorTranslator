@@ -344,6 +344,15 @@ class TextOverlay(context: Context) : View(context) {
      * This covers the original Chinese text before Russian translation is drawn.
      */
     private fun drawEraserBox(canvas: Canvas, box: RectF) {
+        // Apply the same Y offset as text rendering (-90 pixels)
+        val yOffset = -90f
+        val offsetBox = RectF(
+            box.left,
+            box.top + yOffset,
+            box.right,
+            box.bottom + yOffset
+        )
+        
         // Calculate animated pulse for subtle effect
         val pulse = (sin(animationTime * GLOW_PULSE_SPEED * 0.5) * 0.1f + 0.9f).toFloat()
         
@@ -362,26 +371,26 @@ class TextOverlay(context: Context) : View(context) {
         // Expand slightly for glow effect
         val glowExpand = 6f
         val glowBox = RectF(
-            box.left - glowExpand,
-            box.top - glowExpand,
-            box.right + glowExpand,
-            box.bottom + glowExpand
+            offsetBox.left - glowExpand,
+            offsetBox.top - glowExpand,
+            offsetBox.right + glowExpand,
+            offsetBox.bottom + glowExpand
         )
         
         // Layer 1: Outer glow (subtle shadow/bloom)
         canvas.drawRoundRect(glowBox, 4f, 4f, eraserGlowPaint)
         
         // Layer 2: Main fill (solid color to hide Chinese text)
-        canvas.drawRoundRect(box, 2f, 2f, eraserFillPaint)
+        canvas.drawRoundRect(offsetBox, 2f, 2f, eraserFillPaint)
         
         // Layer 3: Optional border for visual polish
-        canvas.drawRoundRect(box, 2f, 2f, eraserBorderPaint)
+        canvas.drawRoundRect(offsetBox, 2f, 2f, eraserBorderPaint)
         
         // Debug: show box info
         if (debugMode) {
             debugInfoPaint.color = Color.MAGENTA
-            val info = "Eraser: ${box.width().toInt()}x${box.height().toInt()}"
-            canvas.drawText(info, box.left, box.top - 4f, debugInfoPaint)
+            val info = "Eraser: ${offsetBox.width().toInt()}x${offsetBox.height().toInt()} (y=${offsetBox.top.toInt()})"
+            canvas.drawText(info, offsetBox.left, offsetBox.top - 4f, debugInfoPaint)
             debugInfoPaint.color = Color.YELLOW
         }
     }
