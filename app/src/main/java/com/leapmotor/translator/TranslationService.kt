@@ -386,8 +386,8 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun calculateFontSize(text: String, bounds: RectF): Float {
-        // Strictly 0.9x of the original text height (no width adjustment)
-        return bounds.height() * 0.9f
+        // Strictly 0.2x of the original text height (very small)
+        return bounds.height() * 0.2f
     }
     
     // ========================================================================
