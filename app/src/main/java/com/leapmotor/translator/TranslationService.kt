@@ -386,8 +386,8 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun calculateFontSize(text: String, bounds: RectF): Float {
-        // Strictly 0.8x of the original text height
-        return bounds.height() * 0.8f
+        // Strictly 0.5x of the original text height (Russian text size)
+        return bounds.height() * 0.5f
     }
     
     // ========================================================================
@@ -464,23 +464,6 @@ class TranslationService : AccessibilityService() {
         
         val elements = activeElements.values.toList()
         
-        // Calculate eraser bounding boxes
-        val boundingBoxes = elements.map { element ->
-            val h = element.bounds.height()
-            
-            // Minimal padding for tight fit ("rovno podhodil")
-            val pHoriz = 6f
-            val pVert = 2f
-            
-            // Box exactly covering the bounds with minimal padding
-            RectF(
-                element.bounds.left - pHoriz,
-                element.predictedY - pVert,
-                element.bounds.right + pHoriz,
-                element.predictedY + h + pVert
-            )
-        }
-        
         // Smart Theme Detection: If text is dark, background is likely light
         val textColor = TextOverlay.Style.textColor
         val r = android.graphics.Color.red(textColor)
@@ -489,11 +472,10 @@ class TranslationService : AccessibilityService() {
         val brightness = (0.299*r + 0.587*g + 0.114*b)
         val isLightBg = brightness < 128
         
-        // Update Canvas-based eraser in TextOverlay
+        // Update Canvas-based eraser in TextOverlay (now just theme setting)
         textOverlay?.isLightBackground = isLightBg
-        textOverlay?.updateEraserBoxes(boundingBoxes)
         
-        // Update text overlay
+        // Update text overlay (Eraser logic is now inside TextOverlay drawing)
         val textItems = elements.map { element ->
             TextOverlay.TranslatedText(
                 text = element.translatedText,
@@ -526,7 +508,7 @@ class TranslationService : AccessibilityService() {
         activeElements.clear()
         releaseFilters()
         serviceScope.launch(Dispatchers.Main) {
-            textOverlay?.clear() // This now clears both text items and eraser boxes
+            textOverlay?.clear()
         }
     }
 }
