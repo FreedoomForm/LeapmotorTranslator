@@ -489,8 +489,8 @@ class TranslationService : AccessibilityService() {
                 element.predictedY + h + pVert
             )
             
-            // Apply 30% reduction (scale to 70%) to match text size
-            val scale = 0.7f
+            // Apply scale (1.4x to match text size)
+            val scale = 1.4f
             val cx = baseBox.centerX()
             val cy = baseBox.centerY()
             val newWidth = baseBox.width() * scale
