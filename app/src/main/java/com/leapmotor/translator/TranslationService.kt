@@ -386,8 +386,8 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun calculateFontSize(text: String, bounds: RectF): Float {
-        // "set 2 scale up" -> 2.0x -> reduced to 1.4x -> reduced by 20% to 1.12x
-        val heightBasedSize = bounds.height() * 1.12f 
+        // "set 2 scale up" -> 2.0x -> reduced to 1.4x -> reduced to 1.12x -> reduced to 0.9x
+        val heightBasedSize = bounds.height() * 0.9f 
         val avgCharWidth = 0.6f
         val requiredWidth = text.length * heightBasedSize * avgCharWidth
         
