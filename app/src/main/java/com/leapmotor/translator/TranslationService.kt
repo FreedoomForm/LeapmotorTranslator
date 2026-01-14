@@ -386,19 +386,8 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun calculateFontSize(text: String, bounds: RectF): Float {
-        // "set 2 scale up" -> 2.0x -> reduced to 1.4x -> reduced to 1.12x -> reduced to 0.9x
-        val heightBasedSize = bounds.height() * 0.9f 
-        val avgCharWidth = 0.6f
-        val requiredWidth = text.length * heightBasedSize * avgCharWidth
-        
-        val widthBasedSize = if (requiredWidth > bounds.width() && bounds.width() > 0) {
-            heightBasedSize * (bounds.width() / requiredWidth)
-        } else {
-            heightBasedSize
-        }
-        
-        // Reasonable range for 2.0x
-        return widthBasedSize.coerceIn(30f, 150f)
+        // Strictly 0.9x of the original text height (no width adjustment)
+        return bounds.height() * 0.9f
     }
     
     // ========================================================================
@@ -478,25 +467,18 @@ class TranslationService : AccessibilityService() {
         // Calculate eraser bounding boxes
         val boundingBoxes = elements.map { element ->
             val h = element.bounds.height()
-            val pHoriz = (h * 0.2f).coerceAtLeast(6f)
-            val pVert = (h * 0.1f).coerceAtLeast(4f)
             
-            // Base box
-            val baseBox = RectF(
+            // Minimal padding for tight fit ("rovno podhodil")
+            val pHoriz = 6f
+            val pVert = 2f
+            
+            // Box exactly covering the bounds with minimal padding
+            RectF(
                 element.bounds.left - pHoriz,
                 element.predictedY - pVert,
                 element.bounds.right + pHoriz,
                 element.predictedY + h + pVert
             )
-            
-            // Apply scale (1.4x to match text size)
-            val scale = 1.4f
-            val cx = baseBox.centerX()
-            val cy = baseBox.centerY()
-            val newWidth = baseBox.width() * scale
-            val newHeight = baseBox.height() * scale
-            
-            RectF(cx - newWidth/2f, cy - newHeight/2f, cx + newWidth/2f, cy + newHeight/2f)
         }
         
         // Smart Theme Detection: If text is dark, background is likely light

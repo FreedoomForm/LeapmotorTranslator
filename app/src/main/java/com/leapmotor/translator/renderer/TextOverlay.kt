@@ -390,15 +390,15 @@ class TextOverlay(context: Context) : View(context) {
         val pulse = (sin(animationTime * GLOW_PULSE_SPEED * 0.5) * 0.1f + 0.9f).toFloat()
         
         if (isLightBackground) {
-            // Light background: white fill with 70% opacity (30% transparent)
-            eraserFillPaint.color = Color.argb(180, 250, 250, 252)
+            // Light background: white fill with 90% opacity (increased by 20%)
+            eraserFillPaint.color = Color.argb(230, 250, 250, 252)
             eraserGlowPaint.color = Color.argb((40 * pulse).toInt(), 100, 100, 120)
             eraserBorderPaint.color = Color.argb((30 * pulse).toInt(), 150, 150, 170)
             // Lighter noise for light background
             noisePaint.alpha = 25 // 10%
         } else {
-            // Dark background: dark fill with 70% opacity (30% transparent)
-            eraserFillPaint.color = Color.argb(180, 15, 15, 18)
+            // Dark background: dark fill with 90% opacity (increased by 20%)
+            eraserFillPaint.color = Color.argb(230, 15, 15, 18)
             eraserGlowPaint.color = Color.argb((50 * pulse).toInt(), 40, 50, 80)
             eraserBorderPaint.color = Color.argb((40 * pulse).toInt(), 60, 70, 100)
             // Stronger noise for dark background
