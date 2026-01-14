@@ -17,8 +17,6 @@ import com.leapmotor.translator.core.containsChinese
 import com.leapmotor.translator.domain.repository.TranslationRepository
 import com.leapmotor.translator.filter.KalmanFilter2D
 import com.leapmotor.translator.filter.KalmanFilter2DPool
-import com.leapmotor.translator.renderer.EraserSurfaceView
-import com.leapmotor.translator.renderer.OverlayRenderer
 import com.leapmotor.translator.renderer.TextOverlay
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
@@ -83,7 +81,7 @@ class TranslationService : AccessibilityService() {
     
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
-    private var eraserView: EraserSurfaceView? = null
+    // Note: Eraser is now Canvas-based, integrated into TextOverlay
     private var textOverlay: TextOverlay? = null
     
     private var debugMode = false
@@ -420,17 +418,11 @@ class TranslationService : AccessibilityService() {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
         }
         
-        // Create eraser view (OpenGL) - added first (bottom layer)
-        eraserView = EraserSurfaceView(this)
-        
-        // Create text overlay - added second (top layer)
+        // Create text overlay (now includes Canvas-based eraser)
+        // The eraser boxes are drawn FIRST, then Russian text on top
         textOverlay = TextOverlay(this)
         
-        // Add views to container: eraser first (bottom), text second (top)
-        overlayContainer?.addView(eraserView, android.widget.FrameLayout.LayoutParams(
-            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-            android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-        ))
+        // Add text overlay to container (single view now handles both eraser + text)
         overlayContainer?.addView(textOverlay, android.widget.FrameLayout.LayoutParams(
             android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
             android.widget.FrameLayout.LayoutParams.MATCH_PARENT
@@ -460,7 +452,7 @@ class TranslationService : AccessibilityService() {
             
             textOverlay?.setStatus(TextOverlay.Status.ACTIVE)
             
-            Logger.i(TAG, "Overlay initialized with FrameLayout container")
+            Logger.i(TAG, "Overlay initialized with Canvas-based eraser (no OpenGL)")
         } catch (e: Exception) {
             Logger.e(TAG, "Failed to add overlay", e)
         }
@@ -474,7 +466,6 @@ class TranslationService : AccessibilityService() {
         }
         
         overlayContainer = null
-        eraserView = null
         textOverlay = null
         isOverlayShowing = false
     }
@@ -484,7 +475,7 @@ class TranslationService : AccessibilityService() {
         
         val elements = activeElements.values.toList()
         
-        // Update eraser
+        // Calculate eraser bounding boxes
         val boundingBoxes = elements.map { element ->
             // Dynamic Eraser Size Logic:
             // Scale padding based on text height (bigger text needs more buffer)
@@ -509,9 +500,9 @@ class TranslationService : AccessibilityService() {
         val brightness = (0.299*r + 0.587*g + 0.114*b)
         val isLightBg = brightness < 128
         
-        eraserView?.renderer?.isLightBackground = isLightBg
-        eraserView?.renderer?.updateBoundingBoxes(boundingBoxes)
-        eraserView?.requestRender()
+        // Update Canvas-based eraser in TextOverlay
+        textOverlay?.isLightBackground = isLightBg
+        textOverlay?.updateEraserBoxes(boundingBoxes)
         
         // Update text overlay
         val textItems = elements.map { element ->
@@ -546,9 +537,7 @@ class TranslationService : AccessibilityService() {
         activeElements.clear()
         releaseFilters()
         serviceScope.launch(Dispatchers.Main) {
-            textOverlay?.clear()
-            eraserView?.renderer?.updateBoundingBoxes(emptyList())
-            eraserView?.requestRender()
+            textOverlay?.clear() // This now clears both text items and eraser boxes
         }
     }
 }

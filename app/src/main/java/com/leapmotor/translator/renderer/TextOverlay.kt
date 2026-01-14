@@ -71,6 +71,17 @@ class TextOverlay(context: Context) : View(context) {
     // Thread-safe list for text items
     private val textItems = CopyOnWriteArrayList<TranslatedText>()
     
+    // Thread-safe list for eraser boxes (Canvas-based eraser)
+    private val eraserBoxes = CopyOnWriteArrayList<RectF>()
+    
+    // Eraser background mode
+    @Volatile
+    var isLightBackground: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+    
     // Current status
     private var currentStatus: Status = Status.INITIALIZING
     
@@ -217,6 +228,27 @@ class TextOverlay(context: Context) : View(context) {
     }
     
     // ============================================================================
+    // ERASER PAINTS (Canvas-based eraser - same approach as text rendering)
+    // ============================================================================
+    
+    // Main eraser fill paint
+    private val eraserFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    
+    // Eraser outer glow/shadow
+    private val eraserGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        maskFilter = BlurMaskFilter(8f, BlurMaskFilter.Blur.NORMAL)
+    }
+    
+    // Eraser border paint
+    private val eraserBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f
+    }
+    
+    // ============================================================================
     // INITIALIZATION
     // ============================================================================
     
@@ -283,7 +315,12 @@ class TextOverlay(context: Context) : View(context) {
         animationTime += currentTime - lastDrawTime
         lastDrawTime = currentTime
         
-        // Draw all text items with premium effects
+        // Draw eraser boxes FIRST (bottom layer - covers Chinese text)
+        for (box in eraserBoxes) {
+            drawEraserBox(canvas, box)
+        }
+        
+        // Draw all text items with premium effects (TOP layer - Russian text)
         for (item in textItems) {
             drawPremiumText(canvas, item)
         }
@@ -299,6 +336,53 @@ class TextOverlay(context: Context) : View(context) {
         // Request redraw for animations
         if (currentStatus == Status.ACTIVE || currentStatus == Status.INITIALIZING) {
             postInvalidateDelayed(16) // ~60fps for smooth animation
+        }
+    }
+    
+    /**
+     * Draw an eraser box using Canvas (same approach as text rendering).
+     * This covers the original Chinese text before Russian translation is drawn.
+     */
+    private fun drawEraserBox(canvas: Canvas, box: RectF) {
+        // Calculate animated pulse for subtle effect
+        val pulse = (sin(animationTime * GLOW_PULSE_SPEED * 0.5) * 0.1f + 0.9f).toFloat()
+        
+        if (isLightBackground) {
+            // Light background: use light gray/white fill
+            eraserFillPaint.color = Color.argb(255, 250, 250, 252)
+            eraserGlowPaint.color = Color.argb((40 * pulse).toInt(), 100, 100, 120)
+            eraserBorderPaint.color = Color.argb((30 * pulse).toInt(), 150, 150, 170)
+        } else {
+            // Dark background: use dark gray/black fill
+            eraserFillPaint.color = Color.argb(255, 15, 15, 18)
+            eraserGlowPaint.color = Color.argb((50 * pulse).toInt(), 40, 50, 80)
+            eraserBorderPaint.color = Color.argb((40 * pulse).toInt(), 60, 70, 100)
+        }
+        
+        // Expand slightly for glow effect
+        val glowExpand = 6f
+        val glowBox = RectF(
+            box.left - glowExpand,
+            box.top - glowExpand,
+            box.right + glowExpand,
+            box.bottom + glowExpand
+        )
+        
+        // Layer 1: Outer glow (subtle shadow/bloom)
+        canvas.drawRoundRect(glowBox, 4f, 4f, eraserGlowPaint)
+        
+        // Layer 2: Main fill (solid color to hide Chinese text)
+        canvas.drawRoundRect(box, 2f, 2f, eraserFillPaint)
+        
+        // Layer 3: Optional border for visual polish
+        canvas.drawRoundRect(box, 2f, 2f, eraserBorderPaint)
+        
+        // Debug: show box info
+        if (debugMode) {
+            debugInfoPaint.color = Color.MAGENTA
+            val info = "Eraser: ${box.width().toInt()}x${box.height().toInt()}"
+            canvas.drawText(info, box.left, box.top - 4f, debugInfoPaint)
+            debugInfoPaint.color = Color.YELLOW
         }
     }
     
@@ -569,6 +653,24 @@ class TextOverlay(context: Context) : View(context) {
     }
     
     /**
+     * Update the list of eraser boxes (Canvas-based eraser).
+     * These boxes are drawn BEFORE text to cover the original Chinese text.
+     */
+    fun updateEraserBoxes(boxes: List<RectF>) {
+        eraserBoxes.clear()
+        eraserBoxes.addAll(boxes)
+        invalidate()
+    }
+    
+    /**
+     * Clear all eraser boxes.
+     */
+    fun clearEraserBoxes() {
+        eraserBoxes.clear()
+        invalidate()
+    }
+    
+    /**
      * Add a single text item.
      */
     fun addTextItem(item: TranslatedText) {
@@ -577,10 +679,11 @@ class TextOverlay(context: Context) : View(context) {
     }
     
     /**
-     * Clear all text items.
+     * Clear all text items and eraser boxes.
      */
     fun clear() {
         textItems.clear()
+        eraserBoxes.clear()
         invalidate()
     }
     
