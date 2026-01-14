@@ -1,6 +1,8 @@
 package com.leapmotor.translator.renderer
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
@@ -16,6 +18,7 @@ import android.view.View
 import com.leapmotor.translator.core.Logger
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.sin
+import kotlin.random.Random
 
 /**
  * Premium Text Overlay for rendering translated Russian text.
@@ -248,6 +251,12 @@ class TextOverlay(context: Context) : View(context) {
         strokeWidth = 1.5f
     }
     
+    // Noise paint for grain effect
+    private val noisePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        alpha = 40 // ~15% opacity for noise effect
+    }
+    
     // ============================================================================
     // INITIALIZATION
     // ============================================================================
@@ -261,6 +270,9 @@ class TextOverlay(context: Context) : View(context) {
         isFocusable = false
         isFocusableInTouchMode = false
         
+        // Generate noise texture
+        createNoiseTexture()
+        
         // Try to load premium font
         loadPremiumFont()
         
@@ -270,6 +282,27 @@ class TextOverlay(context: Context) : View(context) {
         Logger.d(TAG, "Premium TextOverlay initialized with multi-layer effects")
     }
     
+    private fun createNoiseTexture() {
+        try {
+            val size = 64
+            val noiseBitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            
+            for (x in 0 until size) {
+                for (y in 0 until size) {
+                    val alpha = Random.nextInt(255)
+                    // Black noise
+                    noiseBitmap.setPixel(x, y, Color.argb(alpha, 0, 0, 0))
+                }
+            }
+            
+            val shader = BitmapShader(noiseBitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+            noisePaint.shader = shader
+            
+        } catch (e: Exception) {
+            Logger.e(TAG, "Failed to create noise texture", e)
+        }
+    }
+
     private fun loadPremiumFont() {
         try {
             // Try to load Roboto Medium for better Russian typography
@@ -357,15 +390,19 @@ class TextOverlay(context: Context) : View(context) {
         val pulse = (sin(animationTime * GLOW_PULSE_SPEED * 0.5) * 0.1f + 0.9f).toFloat()
         
         if (isLightBackground) {
-            // Light background: use light gray/white fill
-            eraserFillPaint.color = Color.argb(255, 250, 250, 252)
+            // Light background: white fill with 70% opacity (30% transparent)
+            eraserFillPaint.color = Color.argb(180, 250, 250, 252)
             eraserGlowPaint.color = Color.argb((40 * pulse).toInt(), 100, 100, 120)
             eraserBorderPaint.color = Color.argb((30 * pulse).toInt(), 150, 150, 170)
+            // Lighter noise for light background
+            noisePaint.alpha = 25 // 10%
         } else {
-            // Dark background: use dark gray/black fill
-            eraserFillPaint.color = Color.argb(255, 15, 15, 18)
+            // Dark background: dark fill with 70% opacity (30% transparent)
+            eraserFillPaint.color = Color.argb(180, 15, 15, 18)
             eraserGlowPaint.color = Color.argb((50 * pulse).toInt(), 40, 50, 80)
             eraserBorderPaint.color = Color.argb((40 * pulse).toInt(), 60, 70, 100)
+            // Stronger noise for dark background
+            noisePaint.alpha = 40 // 15%
         }
         
         // Expand slightly for glow effect
@@ -380,10 +417,13 @@ class TextOverlay(context: Context) : View(context) {
         // Layer 1: Outer glow (subtle shadow/bloom)
         canvas.drawRoundRect(glowBox, 4f, 4f, eraserGlowPaint)
         
-        // Layer 2: Main fill (solid color to hide Chinese text)
+        // Layer 2: Main fill (solid color with transparency)
         canvas.drawRoundRect(offsetBox, 2f, 2f, eraserFillPaint)
         
-        // Layer 3: Optional border for visual polish
+        // Layer 3: Noise effect (15%)
+        canvas.drawRoundRect(offsetBox, 2f, 2f, noisePaint)
+        
+        // Layer 4: Optional border for visual polish
         canvas.drawRoundRect(offsetBox, 2f, 2f, eraserBorderPaint)
         
         // Debug: show box info
