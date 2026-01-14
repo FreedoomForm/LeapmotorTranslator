@@ -445,7 +445,7 @@ class TextOverlay(context: Context) : View(context) {
         }
 
         // --- CONFIGURATION ---
-        val targetFontSize = item.fontSize.coerceAtLeast(20f)
+        val targetFontSize = item.fontSize
         
         // Update all paint sizes
         listOf(textPaint, strokePaint, shadowPaint, outerGlowPaint, innerGlowPaint).forEach { paint ->
