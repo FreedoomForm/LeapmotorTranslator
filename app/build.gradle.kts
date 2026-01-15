@@ -8,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.leapmotor.translator"
-    compileSdk = 34
+    compileSdk = 31
 
     defaultConfig {
         applicationId = "com.leapmotor.translator"
         minSdk = 28
-        targetSdk = 34
+        targetSdk = 31
         versionCode = 3
         versionName = "3.0.0"
 

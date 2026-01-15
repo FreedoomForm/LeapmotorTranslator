@@ -126,8 +126,7 @@ class TranslationService : AccessibilityService() {
         
         Logger.i(TAG, "TranslationService connected")
         
-        // Configure accessibility service
-        configureAccessibilityService()
+        // Accessibility service is configured via XML (res/xml/accessibility_service_config.xml)
         
         // Initialize overlay
         initializeOverlay()
@@ -160,23 +159,7 @@ class TranslationService : AccessibilityService() {
     // CONFIGURATION
     // ========================================================================
     
-    private fun configureAccessibilityService() {
-        val info = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
-                        AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                        AccessibilityEvent.TYPE_VIEW_SCROLLED
-            
-            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            
-            flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                   AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                   AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
-            
-            notificationTimeout = 50
-        }
-        
-        serviceInfo = info
-    }
+
     
     // ========================================================================
     // ACCESSIBILITY EVENTS
