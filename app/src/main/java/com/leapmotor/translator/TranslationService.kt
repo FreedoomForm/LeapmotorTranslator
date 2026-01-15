@@ -386,8 +386,8 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun calculateFontSize(text: String, bounds: RectF): Float {
-        // Strictly 0.5x of the original text height (Russian text size)
-        return bounds.height() * 0.5f
+        // Strictly 0.3x of the original text height
+        return bounds.height() * 0.3f
     }
     
     // ========================================================================
@@ -459,10 +459,85 @@ class TranslationService : AccessibilityService() {
         isOverlayShowing = false
     }
     
+    private fun spToPx(sp: Float): Float {
+        return android.util.TypedValue.applyDimension(
+            android.util.TypedValue.COMPLEX_UNIT_SP,
+            sp,
+            resources.displayMetrics
+        )
+    }
+
     private fun updateOverlay() {
         if (!isOverlayShowing) return
         
         val elements = activeElements.values.toList()
+        
+        // Paint for measuring text
+        val measurePaint = android.graphics.Paint().apply {
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+        
+        // Limits
+        val minSp = 12f
+        val maxSp = 16f
+        val minPx = spToPx(minSp)
+        val maxPx = spToPx(maxSp)
+        
+        // Calculate layout data for each element
+        data class LayoutData(
+            val element: TrackedElement,
+            val fontSize: Float,
+            val displayBounds: RectF
+        )
+        
+        val layoutDataList = elements.map { element ->
+            val text = element.translatedText
+            val originalBounds = element.bounds
+            
+            // 1. Calculate best font size
+            measurePaint.textSize = maxPx
+            val widthAtMax = measurePaint.measureText(text)
+            
+            var fontSize = maxPx
+            if (widthAtMax > originalBounds.width()) {
+                // Determine scale to fit width
+                val scale = originalBounds.width() / widthAtMax
+                val scaledSize = maxPx * scale
+                // Clamp to minimum
+                fontSize = scaledSize.coerceAtLeast(minPx)
+            }
+            
+            // 2. Measure final dimensions
+            measurePaint.textSize = fontSize
+            val textWidth = measurePaint.measureText(text)
+            val fontMetrics = measurePaint.fontMetrics
+            val textHeight = fontMetrics.descent - fontMetrics.ascent
+            
+            // 3. Determine display bounds (expanding if overflow)
+            // Padding
+            val pHoriz = 12f // slightly more horizontal padding for better look
+            val pVert = 6f
+            
+            val requiredWidth = textWidth + pHoriz * 2
+            val requiredHeight = textHeight + pVert * 2
+            
+            val finalWidth = kotlin.math.max(originalBounds.width(), requiredWidth)
+            val finalHeight = kotlin.math.max(originalBounds.height(), requiredHeight)
+            
+            // Center the new bounds on the original tracked position
+            val centerX = originalBounds.centerX()
+            // Using predictedY as reference top, so center is predictedY + h/2
+            val centerY = element.predictedY + originalBounds.height() / 2f
+            
+            val displayBounds = RectF(
+                centerX - finalWidth / 2f,
+                centerY - finalHeight / 2f,
+                centerX + finalWidth / 2f,
+                centerY + finalHeight / 2f
+            )
+            
+            LayoutData(element, fontSize, displayBounds)
+        }
         
         // Smart Theme Detection: If text is dark, background is likely light
         val textColor = TextOverlay.Style.textColor
@@ -472,21 +547,20 @@ class TranslationService : AccessibilityService() {
         val brightness = (0.299*r + 0.587*g + 0.114*b)
         val isLightBg = brightness < 128
         
-        // Update Canvas-based eraser in TextOverlay (now just theme setting)
+        // Update Canvas-based eraser in TextOverlay
         textOverlay?.isLightBackground = isLightBg
         
-        // Update text overlay (Eraser logic is now inside TextOverlay drawing)
-        val textItems = elements.map { element ->
+        // Update Eraser Boxes
+        val eraserBoxes = layoutDataList.map { it.displayBounds }
+        textOverlay?.updateEraserBoxes(eraserBoxes)
+        
+        // Update Text Items
+        val textItems = layoutDataList.map { data ->
             TextOverlay.TranslatedText(
-                text = element.translatedText,
-                bounds = RectF(
-                    element.bounds.left,
-                    element.predictedY,
-                    element.bounds.right,
-                    element.predictedY + element.bounds.height()
-                ),
-                originalText = element.originalText,
-                fontSize = element.fontSize
+                text = data.element.translatedText,
+                bounds = data.displayBounds,
+                originalText = data.element.originalText,
+                fontSize = data.fontSize
             )
         }
         textOverlay?.updateTextItems(textItems)
@@ -508,7 +582,7 @@ class TranslationService : AccessibilityService() {
         activeElements.clear()
         releaseFilters()
         serviceScope.launch(Dispatchers.Main) {
-            textOverlay?.clear()
+            textOverlay?.clear() // This now clears both text items and eraser boxes
         }
     }
 }

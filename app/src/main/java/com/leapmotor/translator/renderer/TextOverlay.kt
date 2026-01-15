@@ -74,6 +74,9 @@ class TextOverlay(context: Context) : View(context) {
     // Thread-safe list for text items
     private val textItems = CopyOnWriteArrayList<TranslatedText>()
     
+    // Thread-safe list for eraser boxes (Canvas-based eraser)
+    private val eraserBoxes = CopyOnWriteArrayList<RectF>()
+    
     // Eraser background mode
     @Volatile
     var isLightBackground: Boolean = false
@@ -345,12 +348,13 @@ class TextOverlay(context: Context) : View(context) {
         animationTime += currentTime - lastDrawTime
         lastDrawTime = currentTime
         
-        // Draw eraser (Chinese text) AND Russian text for each item
+        // Draw eraser boxes FIRST (bottom layer - covers Chinese text)
+        for (box in eraserBoxes) {
+            drawEraserBox(canvas, box)
+        }
+        
+        // Draw all text items with premium effects (TOP layer - Russian text)
         for (item in textItems) {
-            // 1. Draw original Chinese text "with our material" (Eraser) to cover original
-            drawChineseEraser(canvas, item)
-            
-            // 2. Draw Russian text on top
             drawPremiumText(canvas, item)
         }
         
@@ -369,95 +373,66 @@ class TextOverlay(context: Context) : View(context) {
     }
     
     /**
-     * Draw the original Chinese text using "Eraser Material" to mask the original.
-     * Replaces the rectangular box.
+     * Draw an eraser box using Canvas (same approach as text rendering).
+     * This covers the original Chinese text before Russian translation is drawn.
      */
-    private fun drawChineseEraser(canvas: Canvas, item: TranslatedText) {
-        // Apply Y offset: -110 pixels (same as Russian text)
+    private fun drawEraserBox(canvas: Canvas, box: RectF) {
+        // Apply Y offset: -110 pixels (moved up by 20px from -90)
         val yOffset = -110f
+        val offsetBox = RectF(
+            box.left,
+            box.top + yOffset,
+            box.right,
+            box.bottom + yOffset
+        )
         
-        // Setup Paints for "Thick Text" Eraser
-        // We use the existing eraser paints but applied to text
-        
-        // Use height-based size for eraser to ensure it covers original text
-        // (independent of translated text size which might be smaller)
-        val targetFontSize = item.bounds.height() * 0.9f
-        
-        // Configure paints for text rendering
-        eraserFillPaint.textSize = targetFontSize
-        eraserFillPaint.textScaleX = Style.fontScaleX
-        eraserFillPaint.typeface = Typeface.DEFAULT_BOLD
-        
-        eraserBorderPaint.textSize = targetFontSize
-        eraserBorderPaint.textScaleX = Style.fontScaleX
-        eraserBorderPaint.typeface = Typeface.DEFAULT_BOLD
-        
-        noisePaint.textSize = targetFontSize
-        noisePaint.textScaleX = Style.fontScaleX
-        noisePaint.typeface = Typeface.DEFAULT_BOLD
-        
-        eraserGlowPaint.textSize = targetFontSize
-        eraserGlowPaint.textScaleX = Style.fontScaleX
-        eraserGlowPaint.typeface = Typeface.DEFAULT_BOLD
-
-        // Calculate position
-        val x = item.bounds.left + 2f
-        val anchorY = item.bounds.top
-        
-        // We need to measure text to center/align properly if needed, 
-        // but assume left alignment matches original
-        
-        // For "Eraser" effect on text, we need a THICK stroke to cover the underlying pixels
-        // So we switch eraserFillPaint to STROKE momentarily or use a dedicated stroke paint
-        val originalStyle = eraserFillPaint.style
-        val originalStrokeWidth = eraserFillPaint.strokeWidth
-        
-        eraserFillPaint.style = Paint.Style.STROKE
-        eraserFillPaint.strokeWidth = targetFontSize * 0.3f // Thick stroke
-        eraserFillPaint.strokeJoin = Paint.Join.ROUND
-        eraserFillPaint.strokeCap = Paint.Cap.ROUND
-        
-        // Determine opacity/color based on theme
-        // Note: Using the values from previous step (90% opacity)
+        // Calculate animated pulse for subtle effect
         val pulse = (sin(animationTime * GLOW_PULSE_SPEED * 0.5) * 0.1f + 0.9f).toFloat()
         
         if (isLightBackground) {
+            // Light background: white fill with 90% opacity (increased by 20%)
             eraserFillPaint.color = Color.argb(230, 250, 250, 252)
             eraserGlowPaint.color = Color.argb((40 * pulse).toInt(), 100, 100, 120)
-            noisePaint.alpha = 25
+            eraserBorderPaint.color = Color.argb((30 * pulse).toInt(), 150, 150, 170)
+            // Lighter noise for light background
+            noisePaint.alpha = 25 // 10%
         } else {
+            // Dark background: dark fill with 90% opacity (increased by 20%)
             eraserFillPaint.color = Color.argb(230, 15, 15, 18)
             eraserGlowPaint.color = Color.argb((50 * pulse).toInt(), 40, 50, 80)
-            noisePaint.alpha = 40
+            eraserBorderPaint.color = Color.argb((40 * pulse).toInt(), 60, 70, 100)
+            // Stronger noise for dark background
+            noisePaint.alpha = 40 // 15%
         }
         
-        // Helper to draw text
-        fun drawTextAt(paint: Paint) {
-             val fontMetrics = paint.fontMetrics
-             val lineY = anchorY + yOffset - (fontMetrics.descent + fontMetrics.ascent) / 2f
-             canvas.drawText(item.originalText, x, lineY, paint)
-             // Note: Multiline support for eraser is tricky without duplicating the logic, 
-             // but user said "draw Chinese text", assuming simple overlay for now.
-             // If original was multiline, we should match it.
-             // For now, drawing single line original text.
+        // Expand slightly for glow effect
+        val glowExpand = 6f
+        val glowBox = RectF(
+            offsetBox.left - glowExpand,
+            offsetBox.top - glowExpand,
+            offsetBox.right + glowExpand,
+            offsetBox.bottom + glowExpand
+        )
+        
+        // Layer 1: Outer glow (subtle shadow/bloom)
+        canvas.drawRoundRect(glowBox, 4f, 4f, eraserGlowPaint)
+        
+        // Layer 2: Main fill (solid color with transparency)
+        canvas.drawRoundRect(offsetBox, 2f, 2f, eraserFillPaint)
+        
+        // Layer 3: Noise effect (15%)
+        canvas.drawRoundRect(offsetBox, 2f, 2f, noisePaint)
+        
+        // Layer 4: Optional border for visual polish
+        canvas.drawRoundRect(offsetBox, 2f, 2f, eraserBorderPaint)
+        
+        // Debug: show box info
+        if (debugMode) {
+            debugInfoPaint.color = Color.MAGENTA
+            val info = "Eraser: ${offsetBox.width().toInt()}x${offsetBox.height().toInt()} (y=${offsetBox.top.toInt()})"
+            canvas.drawText(info, offsetBox.left, offsetBox.top - 4f, debugInfoPaint)
+            debugInfoPaint.color = Color.YELLOW
         }
-
-        // Layer 1: Glow
-        drawTextAt(eraserGlowPaint)
-        
-        // Layer 2: Thick background stroke (Eraser)
-        drawTextAt(eraserFillPaint)
-        
-        // Layer 3: Fill (to close gaps inside characters)
-        eraserFillPaint.style = Paint.Style.FILL
-        drawTextAt(eraserFillPaint)
-        
-        // Layer 4: Noise
-        drawTextAt(noisePaint)
-        
-        // Restore paint
-        eraserFillPaint.style = originalStyle
-        eraserFillPaint.strokeWidth = originalStrokeWidth
     }
     
     /**
@@ -470,7 +445,7 @@ class TextOverlay(context: Context) : View(context) {
         }
 
         // --- CONFIGURATION ---
-        val targetFontSize = item.fontSize
+        val targetFontSize = item.fontSize.coerceAtLeast(20f)
         
         // Update all paint sizes
         listOf(textPaint, strokePaint, shadowPaint, outerGlowPaint, innerGlowPaint).forEach { paint ->
@@ -493,7 +468,7 @@ class TextOverlay(context: Context) : View(context) {
         // --- POSITIONING ---
         val x = item.bounds.left + 2f
         val anchorY = item.bounds.top
-        val yOffset = -110f
+        val yOffset = -90f
         
         // Calculate animated glow intensity
         val glowPulse = (sin(animationTime * GLOW_PULSE_SPEED) * 0.15f + 0.85f).toFloat()
@@ -727,6 +702,24 @@ class TextOverlay(context: Context) : View(context) {
     }
     
     /**
+     * Update the list of eraser boxes (Canvas-based eraser).
+     * These boxes are drawn BEFORE text to cover the original Chinese text.
+     */
+    fun updateEraserBoxes(boxes: List<RectF>) {
+        eraserBoxes.clear()
+        eraserBoxes.addAll(boxes)
+        invalidate()
+    }
+    
+    /**
+     * Clear all eraser boxes.
+     */
+    fun clearEraserBoxes() {
+        eraserBoxes.clear()
+        invalidate()
+    }
+    
+    /**
      * Add a single text item.
      */
     fun addTextItem(item: TranslatedText) {
@@ -739,6 +732,7 @@ class TextOverlay(context: Context) : View(context) {
      */
     fun clear() {
         textItems.clear()
+        eraserBoxes.clear()
         invalidate()
     }
     
