@@ -3,9 +3,11 @@ package com.leapmotor.translator
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
+import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.os.Build
 import android.view.Gravity
 import android.view.View
@@ -386,8 +388,28 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun calculateFontSize(text: String, bounds: RectF): Float {
-        // Strictly 0.3x of the original text height
-        return bounds.height() * 0.3f
+        val density = resources.displayMetrics.scaledDensity
+        val minSize = 10f * density
+        val maxSize = 16f * density
+        
+        if (text.isEmpty() || bounds.width() <= 0) return minSize
+        
+        // Use Paint to measure text width accurately at max size
+        val paint = Paint().apply {
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = maxSize
+        }
+        
+        val widthAtMax = paint.measureText(text)
+        val availableWidth = (bounds.width() - 8f).coerceAtLeast(1f) // 4px padding on each side
+        
+        return if (widthAtMax <= availableWidth) {
+            maxSize
+        } else {
+            // Scale down to fit width
+            val scaledSize = maxSize * (availableWidth / widthAtMax)
+            scaledSize.coerceIn(minSize, maxSize)
+        }
     }
     
     // ========================================================================
@@ -459,84 +481,26 @@ class TranslationService : AccessibilityService() {
         isOverlayShowing = false
     }
     
-    private fun spToPx(sp: Float): Float {
-        return android.util.TypedValue.applyDimension(
-            android.util.TypedValue.COMPLEX_UNIT_SP,
-            sp,
-            resources.displayMetrics
-        )
-    }
-
     private fun updateOverlay() {
         if (!isOverlayShowing) return
         
         val elements = activeElements.values.toList()
         
-        // Paint for measuring text
-        val measurePaint = android.graphics.Paint().apply {
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-        }
-        
-        // Limits
-        val minSp = 12f
-        val maxSp = 16f
-        val minPx = spToPx(minSp)
-        val maxPx = spToPx(maxSp)
-        
-        // Calculate layout data for each element
-        data class LayoutData(
-            val element: TrackedElement,
-            val fontSize: Float,
-            val displayBounds: RectF
-        )
-        
-        val layoutDataList = elements.map { element ->
-            val text = element.translatedText
-            val originalBounds = element.bounds
+        // Calculate eraser bounding boxes
+        val boundingBoxes = elements.map { element ->
+            val h = element.bounds.height()
             
-            // 1. Calculate best font size
-            measurePaint.textSize = maxPx
-            val widthAtMax = measurePaint.measureText(text)
+            // Minimal padding for tight fit ("rovno podhodil")
+            val pHoriz = 6f
+            val pVert = 2f
             
-            var fontSize = maxPx
-            if (widthAtMax > originalBounds.width()) {
-                // Determine scale to fit width
-                val scale = originalBounds.width() / widthAtMax
-                val scaledSize = maxPx * scale
-                // Clamp to minimum
-                fontSize = scaledSize.coerceAtLeast(minPx)
-            }
-            
-            // 2. Measure final dimensions
-            measurePaint.textSize = fontSize
-            val textWidth = measurePaint.measureText(text)
-            val fontMetrics = measurePaint.fontMetrics
-            val textHeight = fontMetrics.descent - fontMetrics.ascent
-            
-            // 3. Determine display bounds (expanding if overflow)
-            // Padding
-            val pHoriz = 12f // slightly more horizontal padding for better look
-            val pVert = 6f
-            
-            val requiredWidth = textWidth + pHoriz * 2
-            val requiredHeight = textHeight + pVert * 2
-            
-            val finalWidth = kotlin.math.max(originalBounds.width(), requiredWidth)
-            val finalHeight = kotlin.math.max(originalBounds.height(), requiredHeight)
-            
-            // Center the new bounds on the original tracked position
-            val centerX = originalBounds.centerX()
-            // Using predictedY as reference top, so center is predictedY + h/2
-            val centerY = element.predictedY + originalBounds.height() / 2f
-            
-            val displayBounds = RectF(
-                centerX - finalWidth / 2f,
-                centerY - finalHeight / 2f,
-                centerX + finalWidth / 2f,
-                centerY + finalHeight / 2f
+            // Box exactly covering the bounds with minimal padding
+            RectF(
+                element.bounds.left - pHoriz,
+                element.predictedY - pVert,
+                element.bounds.right + pHoriz,
+                element.predictedY + h + pVert
             )
-            
-            LayoutData(element, fontSize, displayBounds)
         }
         
         // Smart Theme Detection: If text is dark, background is likely light
@@ -549,18 +513,20 @@ class TranslationService : AccessibilityService() {
         
         // Update Canvas-based eraser in TextOverlay
         textOverlay?.isLightBackground = isLightBg
+        textOverlay?.updateEraserBoxes(boundingBoxes)
         
-        // Update Eraser Boxes
-        val eraserBoxes = layoutDataList.map { it.displayBounds }
-        textOverlay?.updateEraserBoxes(eraserBoxes)
-        
-        // Update Text Items
-        val textItems = layoutDataList.map { data ->
+        // Update text overlay
+        val textItems = elements.map { element ->
             TextOverlay.TranslatedText(
-                text = data.element.translatedText,
-                bounds = data.displayBounds,
-                originalText = data.element.originalText,
-                fontSize = data.fontSize
+                text = element.translatedText,
+                bounds = RectF(
+                    element.bounds.left,
+                    element.predictedY,
+                    element.bounds.right,
+                    element.predictedY + element.bounds.height()
+                ),
+                originalText = element.originalText,
+                fontSize = element.fontSize
             )
         }
         textOverlay?.updateTextItems(textItems)
