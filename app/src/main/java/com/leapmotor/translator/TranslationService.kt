@@ -17,8 +17,6 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.leapmotor.translator.core.Logger
 import com.leapmotor.translator.core.containsChinese
 import com.leapmotor.translator.domain.repository.TranslationRepository
-import com.leapmotor.translator.filter.KalmanFilter2D
-import com.leapmotor.translator.filter.KalmanFilter2DPool
 import com.leapmotor.translator.renderer.TextOverlay
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
@@ -49,7 +47,7 @@ class TranslationService : AccessibilityService() {
             private set
         
         // Configuration
-        private const val UPDATE_DEBOUNCE_MS = 50L
+        private const val UPDATE_DEBOUNCE_MS = 10L // Reduced from 50L for smoother scroll updates
         private const val MAX_NODES_PER_FRAME = 128
         private const val ELEMENT_TIMEOUT_MS = 500L
         private const val MAX_HISTORY_SIZE = 100
@@ -94,7 +92,7 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private val activeElements = ConcurrentHashMap<String, TrackedElement>()
-    private val kalmanFilters = ConcurrentHashMap<String, KalmanFilter2D>()
+    // Kalman filter removed for direct updates
     
     private var lastUpdateTime = 0L
     private var updateJob: Job? = null
@@ -306,7 +304,12 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun createElementId(nodeInfo: TextNodeInfo): String {
-        return "${nodeInfo.viewId ?: "no_id"}|${nodeInfo.text}|${nodeInfo.bounds.width().toInt()}x${nodeInfo.bounds.height().toInt()}"
+        // Use center position quantized to 50px grid to prevent jitter from creating new IDs.
+        // This solves the "double text" or "trash" effect caused by 1px dimension changes.
+        val cx = (nodeInfo.bounds.centerX() / 50).toInt()
+        val cy = (nodeInfo.bounds.centerY() / 50).toInt()
+        
+        return "${nodeInfo.viewId ?: "no_id"}|${nodeInfo.text}|${cx}_${cy}"
     }
     
     private suspend fun createNewElement(
@@ -340,21 +343,9 @@ class TranslationService : AccessibilityService() {
         nodeInfo: TextNodeInfo,
         currentTime: Long
     ) {
-        // Get or create Kalman filter
-        val filter = kalmanFilters.getOrPut(element.id) {
-            KalmanFilter2DPool.acquire()
-        }
-        
-        // Update Kalman filter and get prediction
-        val (_, predictedY) = filter.update(
-            nodeInfo.bounds.left,
-            nodeInfo.bounds.top,
-            currentTime
-        )
-        
-        // Update element
+        // Direct update without Kalman filter (as requested for "60fps" feel)
         element.bounds = nodeInfo.bounds
-        element.predictedY = predictedY
+        element.predictedY = nodeInfo.bounds.top
         element.lastSeenTime = currentTime
     }
     
@@ -364,22 +355,12 @@ class TranslationService : AccessibilityService() {
             val entry = iterator.next()
             if (!seenIds.contains(entry.key) && 
                 currentTime - entry.value.lastSeenTime > ELEMENT_TIMEOUT_MS) {
-                
-                // Release Kalman filter
-                kalmanFilters.remove(entry.key)?.let { filter ->
-                    KalmanFilter2DPool.release(filter)
-                }
-                
                 iterator.remove()
             }
         }
     }
     
     private fun releaseFilters() {
-        kalmanFilters.values.forEach { filter ->
-            KalmanFilter2DPool.release(filter)
-        }
-        kalmanFilters.clear()
         activeElements.clear()
     }
     
@@ -492,9 +473,12 @@ class TranslationService : AccessibilityService() {
             
             // Minimal padding for tight fit ("rovno podhodil")
             val pHoriz = 6f
-            val pVert = 2f
             
-            // Box exactly covering the bounds with minimal padding
+            // INCREASED vertical padding to cover Chinese text during scroll lag
+            // We use a larger vertical buffer so the box keeps covering the text even if it moves fast
+            val pVert = 25f 
+            
+            // Box exactly covering the bounds with expanded vertical safety margin
             RectF(
                 element.bounds.left - pHoriz,
                 element.predictedY - pVert,
