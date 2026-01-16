@@ -352,8 +352,8 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun calculateFontSize(text: String, bounds: RectF): Float {
-        // Exact 1:1 match with original text height as requested ("odin v odin")
-        return bounds.height()
+        // Strictly 0.3x of the original text height
+        return bounds.height() * 0.3f
     }
     
     // ========================================================================
