@@ -377,8 +377,8 @@ class TextOverlay(context: Context) : View(context) {
      * This covers the original Chinese text before Russian translation is drawn.
      */
     private fun drawEraserBox(canvas: Canvas, box: RectF) {
-        // Apply Y offset: 0 (no shift, direct cover)
-        val yOffset = 0f
+        // Apply Y offset: -110 pixels (moved up by 20px from -90)
+        val yOffset = -110f
         val offsetBox = RectF(
             box.left,
             box.top + yOffset,
@@ -386,36 +386,52 @@ class TextOverlay(context: Context) : View(context) {
             box.bottom + yOffset
         )
         
-        // Calculate animated pulse for subtle effect
-        val pulse = (sin(animationTime * GLOW_PULSE_SPEED * 0.5) * 0.1f + 0.9f).toFloat()
+        // --- APPLE GLASS STYLE ---
+        // Pill shape rounded corners
+        val startRadius = 12f
+        val borderRadius = 12f
         
         if (isLightBackground) {
-            // Apple Glass Light: High opacity white (frosted), subtle border
-            eraserFillPaint.color = Color.argb(210, 255, 255, 255)
-            eraserBorderPaint.color = Color.argb(120, 255, 255, 255) // Distinct glass edge
+            // Light Glass: High opacity white with bluish tint
+            eraserFillPaint.color = Color.argb(220, 245, 248, 255)
+            // Border: Subtle white/blue outline
+            eraserBorderPaint.color = Color.argb(100, 200, 220, 255)
+            eraserBorderPaint.strokeWidth = 2f
             noisePaint.alpha = 20
         } else {
-            // Apple Glass Dark: High opacity dark (frosted), subtle light border
-            eraserFillPaint.color = Color.argb(220, 30, 30, 35)
-            eraserBorderPaint.color = Color.argb(60, 255, 255, 255) // Subtle light edge
+            // Dark Glass: Deep dark gray/blue
+            eraserFillPaint.color = Color.argb(230, 30, 35, 45)
+            // Border: Subtle white outline for glass edge effect
+            eraserBorderPaint.color = Color.argb(60, 255, 255, 255)
+            eraserBorderPaint.strokeWidth = 1.5f
             noisePaint.alpha = 30
         }
         
-        // Rounded corners for glass effect (12px)
-        val radius = 12f
+        // Expand slightly for glow effect/glass edge
+        val glowExpand = 2f
+        val glowBox = RectF(
+            offsetBox.left - glowExpand,
+            offsetBox.top - glowExpand,
+            offsetBox.right + glowExpand,
+            offsetBox.bottom + glowExpand
+        )
         
-        // Layer 1: Main fill (Frosted Glass base)
-        canvas.drawRoundRect(offsetBox, radius, radius, eraserFillPaint)
+        // Layer 1: Subtle outer shadow (Simulating glass depth)
+        // Reusing glow paint as shadow/depth
+        eraserGlowPaint.color = if (isLightBackground) Color.argb(20, 0, 0, 50) else Color.argb(60, 0, 0, 0)
+        canvas.drawRoundRect(glowBox, startRadius + 2f, startRadius + 2f, eraserGlowPaint)
         
-        // Layer 2: Noise effect (Grain)
-        canvas.drawRoundRect(offsetBox, radius, radius, noisePaint)
+        // Layer 2: Main Glass Fill
+        canvas.drawRoundRect(offsetBox, borderRadius, borderRadius, eraserFillPaint)
         
-        // Layer 3: Glass Border
-        canvas.drawRoundRect(offsetBox, radius, radius, eraserBorderPaint)
+        // Layer 3: Noise effect (Texture)
+        canvas.drawRoundRect(offsetBox, borderRadius, borderRadius, noisePaint)
+        
+        // Layer 4: Glass Border (Edge highlight)
+        canvas.drawRoundRect(offsetBox, borderRadius, borderRadius, eraserBorderPaint)
         
         // Debug: show box info
         if (debugMode) {
-
             debugInfoPaint.color = Color.MAGENTA
             val info = "Eraser: ${offsetBox.width().toInt()}x${offsetBox.height().toInt()} (y=${offsetBox.top.toInt()})"
             canvas.drawText(info, offsetBox.left, offsetBox.top - 4f, debugInfoPaint)
@@ -456,7 +472,7 @@ class TextOverlay(context: Context) : View(context) {
         // --- POSITIONING ---
         val x = item.bounds.left + 2f
         val anchorY = item.bounds.top
-        val yOffset = 0f
+        val yOffset = -90f
         
         // Calculate animated glow intensity
         val glowPulse = (sin(animationTime * GLOW_PULSE_SPEED) * 0.15f + 0.85f).toFloat()
@@ -493,8 +509,10 @@ class TextOverlay(context: Context) : View(context) {
         glowPulse: Float,
         gradientShader: Shader
     ) {
-        // SINGLE LAYER RENDERING
-        // Draw main text fill with gradient only
+        // SINGLE LAYER DRAWING (As requested: "risuy tolko odin sloy")
+        // No outer glow, no shadow, no stroke, no inner glow.
+        
+        // Main text fill with gradient
         canvas.save()
         canvas.translate(x, y)
         textPaint.shader = gradientShader

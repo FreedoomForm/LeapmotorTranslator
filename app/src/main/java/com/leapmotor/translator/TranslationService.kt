@@ -352,8 +352,28 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
     private fun calculateFontSize(text: String, bounds: RectF): Float {
-        // Strictly 0.3x of the original text height
-        return bounds.height() * 0.3f
+        val density = resources.displayMetrics.scaledDensity
+        val minSize = 10f * density
+        val maxSize = 16f * density
+        
+        if (text.isEmpty() || bounds.width() <= 0) return minSize
+        
+        // Use Paint to measure text width accurately at max size
+        val paint = Paint().apply {
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = maxSize
+        }
+        
+        val widthAtMax = paint.measureText(text)
+        val availableWidth = (bounds.width() - 8f).coerceAtLeast(1f) // 4px padding on each side
+        
+        return if (widthAtMax <= availableWidth) {
+            maxSize
+        } else {
+            // Scale down to fit width
+            val scaledSize = maxSize * (availableWidth / widthAtMax)
+            scaledSize.coerceIn(minSize, maxSize)
+        }
     }
     
     // ========================================================================
@@ -434,9 +454,9 @@ class TranslationService : AccessibilityService() {
         val boundingBoxes = elements.map { element ->
             val h = element.bounds.height()
             
-            // Minimal padding for maximum tightness ("maksimalno blizko k bukvam")
-            val pHoriz = 2f
-            val pVert = 1f 
+            // Minimal padding for tight fit (Apple Glass style)
+            val pHoriz = 4f
+            val pVert = 2f
             
             // Box exactly covering the bounds with minimal padding
             RectF(
