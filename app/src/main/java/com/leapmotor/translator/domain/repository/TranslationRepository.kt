@@ -36,6 +36,15 @@ interface TranslationRepository {
     // ============================================================================
     
     /**
+     * Configure translation languages.
+     * Must be called before initialize().
+     * 
+     * @param sourceLang Source language code (e.g. "zh")
+     * @param targetLang Target language code (e.g. "ru")
+     */
+    fun configure(sourceLang: String, targetLang: String)
+
+    /**
      * Initialize the translation engine and download model if needed.
      * 
      * @return Result indicating success or failure

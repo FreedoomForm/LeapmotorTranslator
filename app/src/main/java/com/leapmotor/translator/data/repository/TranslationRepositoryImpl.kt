@@ -36,10 +36,13 @@ import kotlin.coroutines.resume
  * - User dictionary support
  * - Statistics tracking
  */
+import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.TranslatorOptions
+
 @Singleton
 class TranslationRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val translator: Translator,
     private val dictionaryDao: DictionaryDao
 ) : TranslationRepository {
     
@@ -70,12 +73,28 @@ class TranslationRepositoryImpl @Inject constructor(
     private val cacheMisses = AtomicLong(0)
     private var userDictionarySize = 0
     
+    // State
+    private var translator: Translator? = null
+    private var sourceLang = TranslateLanguage.CHINESE
+    private var targetLang = TranslateLanguage.RUSSIAN
+    
     // ========================================================================
     // INITIALIZATION
     // ========================================================================
     
+    override fun configure(sourceLang: String, targetLang: String) {
+        if (this.sourceLang != sourceLang || this.targetLang != targetLang) {
+            this.sourceLang = sourceLang
+            this.targetLang = targetLang
+            // Reset model state to force re-initialization
+            closeTranslator()
+            _modelState.value = ModelState.NotInitialized
+            Logger.i(TAG, "Configured languages: $sourceLang -> $targetLang")
+        }
+    }
+    
     override suspend fun initialize(): Result<Unit> = withContext(Dispatchers.IO) {
-        if (_modelState.value is ModelState.Ready) {
+        if (_modelState.value is ModelState.Ready && translator != null) {
             return@withContext Result.success(Unit)
         }
         
@@ -85,11 +104,20 @@ class TranslationRepositoryImpl @Inject constructor(
         }
         
         _modelState.value = ModelState.Initializing
-        Logger.i(TAG, "Initializing translation model")
+        Logger.i(TAG, "Initializing translation model for $sourceLang -> $targetLang")
         
         try {
             // Load user dictionary into memory cache
             loadUserDictionaryToMemory()
+            
+            // Create translator options
+            val options = TranslatorOptions.Builder()
+                .setSourceLanguage(sourceLang)
+                .setTargetLanguage(targetLang)
+                .build()
+                
+            // Create client
+            translator = Translation.getClient(options)
             
             // Download ML model
             _modelState.value = ModelState.Downloading
@@ -131,13 +159,13 @@ class TranslationRepositoryImpl @Inject constructor(
     
     private suspend fun downloadModel(conditions: DownloadConditions): Boolean =
         suspendCancellableCoroutine { continuation ->
-            translator.downloadModelIfNeeded(conditions)
-                .addOnSuccessListener {
+            translator?.downloadModelIfNeeded(conditions)
+                ?.addOnSuccessListener {
                     if (continuation.isActive) continuation.resume(true)
                 }
-                .addOnFailureListener {
+                ?.addOnFailureListener {
                     if (continuation.isActive) continuation.resume(false)
-                }
+                } ?: continuation.resume(false)
         }
     
     // ========================================================================
@@ -193,13 +221,13 @@ class TranslationRepositoryImpl @Inject constructor(
     
     private suspend fun performTranslation(text: String): String =
         suspendCancellableCoroutine { continuation ->
-            translator.translate(text)
-                .addOnSuccessListener { result ->
+            translator?.translate(text)
+                ?.addOnSuccessListener { result ->
                     if (continuation.isActive) continuation.resume(result)
                 }
-                .addOnFailureListener {
+                ?.addOnFailureListener {
                     if (continuation.isActive) continuation.resume(text) // Fallback
-                }
+                } ?: continuation.resume(text)
         }
     
     override suspend fun translateBatch(texts: List<String>): Result<Map<String, String>> =
@@ -283,8 +311,13 @@ class TranslationRepositoryImpl @Inject constructor(
     // ========================================================================
     
     override fun release() {
-        translator.close()
+        closeTranslator()
         _modelState.value = ModelState.NotInitialized
         Logger.i(TAG, "Repository released")
+    }
+    
+    private fun closeTranslator() {
+        translator?.close()
+        translator = null
     }
 }

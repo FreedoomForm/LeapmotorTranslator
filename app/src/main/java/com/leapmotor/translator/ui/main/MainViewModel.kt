@@ -96,6 +96,16 @@ class MainViewModel @Inject constructor(
                 }
         }
     }
+
+    /**
+     * Update translation languages and re-initialize.
+     */
+    fun updateLanguages(source: String, target: String) {
+        viewModelScope.launch(ioDispatcher) {
+            translationRepository.configure(source, target)
+            initializeTranslation()
+        }
+    }
     
     /**
      * Refresh UI state.

@@ -26,26 +26,10 @@ object TranslationModule {
     
     @Provides
     @Singleton
-    fun provideTranslatorOptions(): TranslatorOptions {
-        return TranslatorOptions.Builder()
-            .setSourceLanguage(TranslateLanguage.CHINESE)
-            .setTargetLanguage(TranslateLanguage.RUSSIAN)
-            .build()
-    }
-    
-    @Provides
-    @Singleton
-    fun provideMLKitTranslator(options: TranslatorOptions): Translator {
-        return Translation.getClient(options)
-    }
-    
-    @Provides
-    @Singleton
     fun provideTranslationRepository(
         @ApplicationContext context: Context,
-        translator: Translator,
         dictionaryDao: DictionaryDao
     ): TranslationRepository {
-        return TranslationRepositoryImpl(context, translator, dictionaryDao)
+        return TranslationRepositoryImpl(context, dictionaryDao)
     }
 }

@@ -97,6 +97,9 @@ class TranslationService : AccessibilityService() {
     private var lastUpdateTime = 0L
     private var updateJob: Job? = null
     
+    // User Settings
+    private var customTextScale: Float = 1.0f
+    
     // ========================================================================
     // DATA CLASSES
     // ========================================================================
@@ -160,6 +163,15 @@ class TranslationService : AccessibilityService() {
     // ========================================================================
     
 
+    
+    // ========================================================================
+    // PUBLIC ACTIONS,
+    // ========================================================================
+    
+    fun updateSettings(textScale: Float, boxOpacity: Int, textColor: Int, boxStyle: Int) {
+        this.customTextScale = textScale
+        textOverlay?.updateAppearance(boxOpacity, textColor, boxStyle)
+    }
     
     // ========================================================================
     // ACCESSIBILITY EVENTS
@@ -367,13 +379,13 @@ class TranslationService : AccessibilityService() {
         val widthAtMax = paint.measureText(text)
         val availableWidth = (bounds.width() - 8f).coerceAtLeast(1f) // 4px padding on each side
         
-        return if (widthAtMax <= availableWidth) {
+        if (widthAtMax <= availableWidth) {
             maxSize
         } else {
             // Scale down to fit width
             val scaledSize = maxSize * (availableWidth / widthAtMax)
             scaledSize.coerceIn(minSize, maxSize)
-        }
+        } * customTextScale
     }
     
     // ========================================================================

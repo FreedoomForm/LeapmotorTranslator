@@ -231,6 +231,20 @@ class TextOverlay(context: Context) : View(context) {
     }
     
     // ============================================================================
+    // USER CONFIGURATION
+    // ============================================================================
+    private var userOpacity: Int = 230
+    private var userTextColor: Int = 0 // 0=White, 1=Yellow, 2=Green, 3=Cyan
+    private var userBoxStyle: Int = 0 // 0=Auto Glass, 1=Solid Dark, 2=Solid Light
+    
+    fun updateAppearance(opacity: Int, textColor: Int, boxStyle: Int) {
+        this.userOpacity = opacity.coerceIn(0, 255)
+        this.userTextColor = textColor
+        this.userBoxStyle = boxStyle
+        invalidate()
+    }
+
+    // ============================================================================
     // ERASER PAINTS (Canvas-based eraser - same approach as text rendering)
     // ============================================================================
     
@@ -391,16 +405,23 @@ class TextOverlay(context: Context) : View(context) {
         val startRadius = 12f
         val borderRadius = 12f
         
-        if (isLightBackground) {
+        // Determine mode based on setting (0=Auto, 1=Dark, 2=Light)
+        val useLightMode = when (userBoxStyle) {
+            1 -> false // Force Dark
+            2 -> true  // Force Light
+            else -> isLightBackground // Auto
+        }
+        
+        if (useLightMode) {
             // Light Glass: High opacity white with bluish tint
-            eraserFillPaint.color = Color.argb(220, 245, 248, 255)
+            eraserFillPaint.color = Color.argb(userOpacity, 245, 248, 255)
             // Border: Subtle white/blue outline
             eraserBorderPaint.color = Color.argb(100, 200, 220, 255)
             eraserBorderPaint.strokeWidth = 2f
             noisePaint.alpha = 20
         } else {
             // Dark Glass: Deep dark gray/blue
-            eraserFillPaint.color = Color.argb(230, 30, 35, 45)
+            eraserFillPaint.color = Color.argb(userOpacity, 30, 35, 45)
             // Border: Subtle white outline for glass edge effect
             eraserBorderPaint.color = Color.argb(60, 255, 255, 255)
             eraserBorderPaint.strokeWidth = 1.5f
@@ -418,7 +439,7 @@ class TextOverlay(context: Context) : View(context) {
         
         // Layer 1: Subtle outer shadow (Simulating glass depth)
         // Reusing glow paint as shadow/depth
-        eraserGlowPaint.color = if (isLightBackground) Color.argb(20, 0, 0, 50) else Color.argb(60, 0, 0, 0)
+        eraserGlowPaint.color = if (useLightMode) Color.argb(20, 0, 0, 50) else Color.argb(60, 0, 0, 0)
         canvas.drawRoundRect(glowBox, startRadius + 2f, startRadius + 2f, eraserGlowPaint)
         
         // Layer 2: Main Glass Fill
@@ -512,11 +533,26 @@ class TextOverlay(context: Context) : View(context) {
         // SINGLE LAYER DRAWING (As requested: "risuy tolko odin sloy")
         // No outer glow, no shadow, no stroke, no inner glow.
         
-        // Main text fill with gradient
+        // Main text fill
         canvas.save()
         canvas.translate(x, y)
-        textPaint.shader = gradientShader
+        
+        // Apply user color setting
+        if (userTextColor != 0) {
+            textPaint.shader = null
+            textPaint.color = when (userTextColor) {
+                1 -> Color.YELLOW
+                2 -> Color.GREEN
+                3 -> Color.CYAN
+                else -> Color.WHITE
+            }
+        } else {
+            textPaint.shader = gradientShader
+        }
+        
         canvas.drawText(text, 0f, 0f, textPaint)
+        
+        // Reset
         textPaint.shader = null
         canvas.restore()
     }
