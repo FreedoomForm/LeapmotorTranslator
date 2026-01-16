@@ -379,13 +379,15 @@ class TranslationService : AccessibilityService() {
         val widthAtMax = paint.measureText(text)
         val availableWidth = (bounds.width() - 8f).coerceAtLeast(1f) // 4px padding on each side
         
-        if (widthAtMax <= availableWidth) {
+        val baseSize = if (widthAtMax <= availableWidth) {
             maxSize
         } else {
             // Scale down to fit width
             val scaledSize = maxSize * (availableWidth / widthAtMax)
             scaledSize.coerceIn(minSize, maxSize)
-        } * customTextScale
+        }
+        
+        return baseSize * customTextScale
     }
     
     // ========================================================================
