@@ -377,8 +377,8 @@ class TextOverlay(context: Context) : View(context) {
      * This covers the original Chinese text before Russian translation is drawn.
      */
     private fun drawEraserBox(canvas: Canvas, box: RectF) {
-        // Apply Y offset: -110 pixels (moved up by 20px from -90)
-        val yOffset = -110f
+        // Apply Y offset: 0 (no shift, direct cover)
+        val yOffset = 0f
         val offsetBox = RectF(
             box.left,
             box.top + yOffset,
@@ -456,7 +456,7 @@ class TextOverlay(context: Context) : View(context) {
         // --- POSITIONING ---
         val x = item.bounds.left + 2f
         val anchorY = item.bounds.top
-        val yOffset = -90f
+        val yOffset = 0f
         
         // Calculate animated glow intensity
         val glowPulse = (sin(animationTime * GLOW_PULSE_SPEED) * 0.15f + 0.85f).toFloat()
