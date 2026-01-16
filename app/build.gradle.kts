@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.leapmotor.translator"
-    compileSdk = 31
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.leapmotor.translator"
