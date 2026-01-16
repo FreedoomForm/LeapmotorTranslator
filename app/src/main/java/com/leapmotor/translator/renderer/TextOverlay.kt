@@ -390,44 +390,32 @@ class TextOverlay(context: Context) : View(context) {
         val pulse = (sin(animationTime * GLOW_PULSE_SPEED * 0.5) * 0.1f + 0.9f).toFloat()
         
         if (isLightBackground) {
-            // Light background: white fill with 90% opacity (increased by 20%)
-            eraserFillPaint.color = Color.argb(230, 250, 250, 252)
-            eraserGlowPaint.color = Color.argb((40 * pulse).toInt(), 100, 100, 120)
-            eraserBorderPaint.color = Color.argb((30 * pulse).toInt(), 150, 150, 170)
-            // Lighter noise for light background
-            noisePaint.alpha = 25 // 10%
+            // Apple Glass Light: High opacity white (frosted), subtle border
+            eraserFillPaint.color = Color.argb(210, 255, 255, 255)
+            eraserBorderPaint.color = Color.argb(120, 255, 255, 255) // Distinct glass edge
+            noisePaint.alpha = 20
         } else {
-            // Dark background: dark fill with 90% opacity (increased by 20%)
-            eraserFillPaint.color = Color.argb(230, 15, 15, 18)
-            eraserGlowPaint.color = Color.argb((50 * pulse).toInt(), 40, 50, 80)
-            eraserBorderPaint.color = Color.argb((40 * pulse).toInt(), 60, 70, 100)
-            // Stronger noise for dark background
-            noisePaint.alpha = 40 // 15%
+            // Apple Glass Dark: High opacity dark (frosted), subtle light border
+            eraserFillPaint.color = Color.argb(220, 30, 30, 35)
+            eraserBorderPaint.color = Color.argb(60, 255, 255, 255) // Subtle light edge
+            noisePaint.alpha = 30
         }
         
-        // Expand slightly for glow effect
-        val glowExpand = 6f
-        val glowBox = RectF(
-            offsetBox.left - glowExpand,
-            offsetBox.top - glowExpand,
-            offsetBox.right + glowExpand,
-            offsetBox.bottom + glowExpand
-        )
+        // Rounded corners for glass effect (12px)
+        val radius = 12f
         
-        // Layer 1: Outer glow (subtle shadow/bloom)
-        canvas.drawRoundRect(glowBox, 4f, 4f, eraserGlowPaint)
+        // Layer 1: Main fill (Frosted Glass base)
+        canvas.drawRoundRect(offsetBox, radius, radius, eraserFillPaint)
         
-        // Layer 2: Main fill (solid color with transparency)
-        canvas.drawRoundRect(offsetBox, 2f, 2f, eraserFillPaint)
+        // Layer 2: Noise effect (Grain)
+        canvas.drawRoundRect(offsetBox, radius, radius, noisePaint)
         
-        // Layer 3: Noise effect (15%)
-        canvas.drawRoundRect(offsetBox, 2f, 2f, noisePaint)
-        
-        // Layer 4: Optional border for visual polish
-        canvas.drawRoundRect(offsetBox, 2f, 2f, eraserBorderPaint)
+        // Layer 3: Glass Border
+        canvas.drawRoundRect(offsetBox, radius, radius, eraserBorderPaint)
         
         // Debug: show box info
         if (debugMode) {
+
             debugInfoPaint.color = Color.MAGENTA
             val info = "Eraser: ${offsetBox.width().toInt()}x${offsetBox.height().toInt()} (y=${offsetBox.top.toInt()})"
             canvas.drawText(info, offsetBox.left, offsetBox.top - 4f, debugInfoPaint)
@@ -505,27 +493,14 @@ class TextOverlay(context: Context) : View(context) {
         glowPulse: Float,
         gradientShader: Shader
     ) {
-        // Layer 1: Outer glow (pulsing)
-        outerGlowPaint.alpha = (60 * glowPulse).toInt()
-        canvas.drawText(text, x, y, outerGlowPaint)
-        
-        // Layer 2: Drop shadow
-        canvas.drawText(text, x + Style.shadowOffsetX, y + Style.shadowOffsetY, shadowPaint)
-        
-        // Layer 3: White stroke outline
-        canvas.drawText(text, x, y, strokePaint)
-        
-        // Layer 4: Main text fill with gradient
+        // SINGLE LAYER RENDERING
+        // Draw main text fill with gradient only
         canvas.save()
         canvas.translate(x, y)
         textPaint.shader = gradientShader
         canvas.drawText(text, 0f, 0f, textPaint)
         textPaint.shader = null
         canvas.restore()
-        
-        // Layer 5: Inner highlight (subtle top glow)
-        innerGlowPaint.alpha = (40 * glowPulse).toInt()
-        // canvas.drawText(text, x, y - 1f, innerGlowPaint) // Optional: can be too heavy
     }
     
     /**
